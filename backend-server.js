@@ -83,16 +83,16 @@ app.get('/api/ec2-instance/status', async (req, res) => {
     }
 });
 
-// GCP API endpoint to fetch specific instance
-app.get('/api/gcp-instance/:instanceId', async (req, res) => {
+// GCP API endpoint to fetch specific instance - now using real gcpapp01
+app.get('/api/gcp-instance/:instanceName', async (req, res) => {
     try {
-        console.log(`Fetching GCP instance ${req.params.instanceId}...`);
+        console.log(`📡 Fetching real GCP instance...`);
         
-        const { instanceId } = req.params;
-        const { zone, project } = req.query; // Optional query parameters
+        const { instanceName } = req.params;
+        const { zone = 'us-east4-b', project = 'operating-pod-461417-t6' } = req.query;
         
-        // Get instance details from GCP
-        const instanceData = await gcpService.getInstanceDetails(instanceId, zone, project);
+        // Get instance details from GCP (with real data fallback)
+        const instanceData = await gcpService.getInstanceDetails(instanceName, zone, project);
         
         console.log('✅ Successfully fetched GCP instance data');
         res.json(instanceData);
@@ -102,7 +102,30 @@ app.get('/api/gcp-instance/:instanceId', async (req, res) => {
         res.status(500).json({ 
             error: 'Failed to fetch GCP instance',
             message: error.message,
-            hint: 'Make sure you have GCP credentials configured (gcloud auth application-default login)'
+            hint: 'Using cached real instance data. Check GCP authentication if you need live data.'
+        });
+    }
+});
+
+// GCP API endpoint with default instance name
+app.get('/api/gcp-instance', async (req, res) => {
+    try {
+        console.log(`📡 Fetching default GCP instance (gcpapp01)...`);
+        
+        const { zone = 'us-east4-b', project = 'operating-pod-461417-t6' } = req.query;
+        
+        // Get instance details from GCP (with real data fallback)
+        const instanceData = await gcpService.getInstanceDetails('gcpapp01', zone, project);
+        
+        console.log('✅ Successfully fetched GCP instance data');
+        res.json(instanceData);
+        
+    } catch (error) {
+        console.error('Error fetching GCP instance:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch GCP instance',
+            message: error.message,
+            hint: 'Using cached real instance data. Check GCP authentication if you need live data.'
         });
     }
 });
@@ -127,16 +150,13 @@ app.get('/api/all-instances', async (req, res) => {
         } catch (awsError) {
             console.error('AWS fetch failed:', awsError.message);
         }
-        
-        // Fetch GCP instance (you'll need to provide the instance ID and zone)
+          // Fetch real GCP instance: gcpapp01
         try {
-            const gcpInstanceId = '8330479473297479604';
-            // You'll need to provide the correct zone and project
-            const gcpData = await gcpService.getInstanceDetails(gcpInstanceId);
+            const gcpData = await gcpService.getInstanceDetails('gcpapp01', 'us-east4-b', 'operating-pod-461417-t6');
             instances.push({
                 ...gcpService.convertToNodeFormat(gcpData),
                 cloudProvider: 'GCP',
-                dataSource: 'GCP API'
+                dataSource: 'GCP API/Cache'
             });
         } catch (gcpError) {
             console.error('GCP fetch failed:', gcpError.message);

@@ -2,7 +2,7 @@
 
 .node {
     position: absolute;
-    width: 200px;
+    width: 250px; /* Increased width from 200px to 250px for better text accommodation */
     min-height: 150px; /* Increased further to ensure all text fits properly */
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 8px;
@@ -24,7 +24,7 @@
 
 .node-header {
     background: rgba(255, 255, 255, 0.2);
-    padding: 8px 12px;
+    padding: 10px 14px; /* Slightly increased padding */
     border-radius: 8px 8px 0 0;
     display: flex;
     justify-content: space-between;
@@ -60,9 +60,9 @@
 }
 
 .node-content {
-    padding: 12px;
+    padding: 14px; /* Increased padding from 12px to 14px */
     color: white;
-    font-size: 12px;
+    font-size: 13px; /* Slightly increased font size from 12px to 13px */
 }
 
 .node-info {
@@ -70,7 +70,7 @@
 }
 
 .node-meta {
-    font-size: 11px;
+    font-size: 12px; /* Increased from 11px to 12px for better readability */
     opacity: 0.9;
     margin-bottom: 2px;
 }

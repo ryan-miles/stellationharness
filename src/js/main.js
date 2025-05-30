@@ -14,7 +14,7 @@ const sampleNodes = [
         hostname: 'localhost',
         ip: '127.0.0.1:8080',
         status: 'warning',
-        position: { x: 300, y: 400 },
+        position: { x: 350, y: 450 }, /* Adjusted for wider blocks and better spacing */
         metadata: {
             environment: 'Development',
             instanceType: 'Standard_B2s',
@@ -25,19 +25,21 @@ const sampleNodes = [
     {
         id: '8330479473297479604',
         type: 'Compute Engine',
-        title: 'GCP-VM-Prod',
-        hostname: 'gcp-vm-production',
-        ip: '34.123.45.67',
+        title: 'gcpapp01',
+        hostname: 'gcpapp01',
+        ip: '34.145.180.162',
         status: 'running',
-        position: { x: 700, y: 300 },
+        position: { x: 750, y: 300 }, /* Moved further right to accommodate wider blocks */
         metadata: {
             environment: 'Production',
-            instanceType: 'e2-standard-2',
-            availabilityZone: 'us-central1-a',
+            instanceType: 'e2-small',
+            availabilityZone: 'us-east4-b',
             cloudProvider: 'GCP',
-            machineType: 'e2-standard-2',
-            zone: 'us-central1-a',
-            project: 'my-gcp-project'
+            machineType: 'e2-small',
+            zone: 'us-east4-b',
+            project: 'operating-pod-461417-t6',
+            isRealInstance: true,
+            dataSource: 'GCP Cache'
         }
     }
 ];
@@ -104,17 +106,51 @@ async function initializeVisualization() {
             console.log('🔍 Fetching real EC2 instances...');
             const ec2Nodes = await window.ec2Service.getNodesFromEC2();
             
-            // Always combine EC2 data with our multi-cloud sample nodes
-            // This ensures we show AWS + Azure + GCP infrastructure
-            nodes = [...ec2Nodes, ...sampleNodes];
+            // Try to fetch real GCP data too
+            let gcpNodes = [];
+            try {
+                console.log('🔍 Fetching real GCP instance...');
+                const response = await fetch('http://localhost:3001/api/gcp-instance');
+                if (response.ok) {
+                    const gcpData = await response.json();
+                    // Convert to node format and update the sample data
+                    const gcpNode = {
+                        id: gcpData.id,
+                        type: gcpData.type,
+                        title: gcpData.name,
+                        hostname: gcpData.hostname,
+                        ip: gcpData.ip,
+                        status: gcpData.status,
+                        position: { x: 700, y: 300 },
+                        metadata: gcpData.metadata
+                    };
+                    gcpNodes = [gcpNode];
+                    console.log('✅ Successfully fetched real GCP data:', gcpData.name);
+                }
+            } catch (gcpError) {
+                console.log('⚠️ Could not fetch live GCP data, using cached data:', gcpError.message);
+            }
+            
+            // Combine real data with remaining sample nodes
+            const azureSampleNode = sampleNodes.find(n => n.metadata?.cloudProvider === 'Azure');
+            const gcpRealOrSample = gcpNodes.length > 0 ? gcpNodes : [sampleNodes.find(n => n.metadata?.cloudProvider === 'GCP')];
+            
+            nodes = [...ec2Nodes, ...gcpRealOrSample, azureSampleNode].filter(Boolean);
             
             // Determine data source from nodes
-            const realNodes = ec2Nodes.filter(n => n.metadata?.isRealInstance);
-            if (realNodes.length > 0) {
-                dataSource = `Hybrid Data (${realNodes.length} real AWS, ${sampleNodes.length} sample multi-cloud)`;
-                showSuccessMessage(`✅ Connected to real EC2: ${realNodes[0].title} + ${sampleNodes.length} multi-cloud nodes`);
+            const realAwsNodes = ec2Nodes.filter(n => n.metadata?.isRealInstance);
+            const realGcpNodes = gcpNodes.filter(n => n.metadata?.isRealInstance);
+            
+            if (realAwsNodes.length > 0 || realGcpNodes.length > 0) {
+                const realCount = realAwsNodes.length + realGcpNodes.length;
+                const cloudSources = [];
+                if (realAwsNodes.length > 0) cloudSources.push(`${realAwsNodes.length} AWS`);
+                if (realGcpNodes.length > 0) cloudSources.push(`${realGcpNodes.length} GCP`);
+                
+                dataSource = `Multi-Cloud Live (${cloudSources.join(' + ')}, 1 Azure sample)`;
+                showSuccessMessage(`✅ Live multi-cloud: ${cloudSources.join(' + ')} + Azure demo`);
             } else {
-                dataSource = `Multi-Cloud Mock Data (${nodes.length} total nodes)`;
+                dataSource = `Multi-Cloud Demo (${nodes.length} total nodes)`;
             }
         }
         

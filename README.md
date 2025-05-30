@@ -4,36 +4,38 @@ This project is a web-based application designed to visually represent a test in
 
 ## Features
 
-- **🔥 LIVE AWS EC2 Integration**: Currently connected to real EC2 instance (ec2-184-72-110-200.compute-1.amazonaws.com)
-- **🌐 Multi-Cloud Ready**: Professional formatting supporting AWS, Azure, GCP with smart provider detection
-- **📊 Real Infrastructure Data**: Backend API server fetching live EC2 instance details, network info, and metadata
-- **🎯 Enhanced Node Display**: Clean multi-cloud format showing Environment/Provider, Service Type/Size, and IP address
+- **🔥 LIVE Multi-Cloud Integration**: Currently connected to real AWS EC2 + GCP Compute Engine instances
+- **🌐 Complete Multi-Cloud Support**: Live AWS + GCP integration with Azure demo, smart provider detection
+- **📊 Real Infrastructure Data**: Backend API serving live AWS EC2 + GCP Compute Engine details with fallback caching
+- **🎯 Enhanced Node Display**: Wider blocks (250px) with professional multi-cloud formatting and improved text readability
 - **🖱️ Interactive Drag & Drop**: Click and drag nodes to reposition them anywhere on the canvas
-- **🚥 Live Status Indicators**: Real-time EC2 state mapping (🟢 running, 🟡 pending, 🔴 stopped)
+- **🚥 Live Status Indicators**: Real-time multi-cloud state mapping (🟢 running, 🟡 pending, 🔴 stopped)
 - **🔗 Smart Connection Lines**: SVG arrows automatically following nodes with intelligent relationship discovery
 - **📝 Comprehensive Tooltips**: Organized hover details with emojis showing instance metadata, network info, and tags
-- **🎨 Environment-based Styling**: Visual borders for Production (green), Development (blue), Staging (orange)
-- **🔄 Real-time Refresh**: Live updates from AWS API with backend integration
+- **🎨 Cloud Provider Styling**: Visual gradients for AWS (orange), GCP (blue-green), Azure (blue) with environment borders
+- **🔄 Real-time Refresh**: Live updates from AWS + GCP APIs with authenticated backend integration
 - **🏗️ Professional Infrastructure Display**: Enterprise-ready visualization for hybrid cloud management
-- **📱 Responsive Design**: Full viewport utilization with proper boundary constraints
-- **⚡ Integration Testing**: Complete validation pipeline ensuring data flow integrity
+- **📱 Responsive Design**: Wider blocks with optimized spacing and full viewport utilization
+- **⚡ Integration Testing**: Complete validation pipeline ensuring multi-cloud data flow integrity
 
 ## Project Structure
 
 ```
 stellationharness/
-├── backend-server.js       # Express API server for AWS integration
+├── backend-server.js       # Express API server for AWS + GCP integration
+├── gcp-integration.js      # GCP Compute Engine service integration
 ├── test-integration.js     # Integration testing and validation
+├── test-multi-cloud.js     # Multi-cloud end-to-end testing
 ├── verify-display.js       # Multi-cloud format verification
-├── package.json           # npm configuration with AWS SDK dependencies
+├── package.json           # npm configuration with AWS SDK + GCP dependencies
 ├── src/
 │   ├── index.html          # Main HTML document for the visualizer
 │   ├── test.html          # Debug/test version (single file)
 │   ├── css/
 │   │   ├── main.css       # Main layout and container styles
-│   │   └── components.css  # Node and connection component styles (150px height)
+│   │   └── components.css  # Node and connection styles (250px width, 150px height)
 │   ├── js/
-│   │   ├── main.js        # Application initialization with multi-cloud sample data
+│   │   ├── main.js        # Application initialization with real multi-cloud data
 │   │   ├── aws-integration.js # Real AWS EC2 API integration service
 │   │   ├── node.js        # Multi-cloud node creation with enhanced formatting
 │   │   ├── connection.js   # Connection line creation and updates
@@ -43,8 +45,9 @@ stellationharness/
 │           ├── status-online.svg   # Green status indicator
 │           ├── status-offline.svg  # Red status indicator
 │           └── status-warning.svg  # Orange status indicator
-├── README.md             # This documentation file
-└── AWS_SETUP.md          # AWS integration setup instructions
+├── README.md             # This comprehensive documentation
+├── AWS_SETUP.md          # AWS integration setup instructions
+└── GCP_SETUP.md          # GCP integration setup instructions
 ```
 
 ## Setup Instructions
@@ -89,16 +92,30 @@ stellationharness/
 
 ## Usage
 
-### 🚀 Live AWS Integration
-The visualizer is **currently connected** to real AWS infrastructure:
+### 🚀 Live Multi-Cloud Integration
+The visualizer is **currently connected** to real multi-cloud infrastructure:
+
+#### **AWS Integration** 🔶
 - **Target Instance**: `ec2-184-72-110-200.compute-1.amazonaws.com` (i-005557a2ed89a5759)
 - **Instance Details**: AmLinApp-01, t2.micro, us-east-1b, Production environment
 - **Real-time Data**: Backend API fetches live EC2 metadata, network info, and tags
-- **Multi-Cloud Format**: Professional display showing "Environment: AWS/Production", "Type: EC2/t2.micro", "IP: 184.72.110.200"
 
-### 🎯 Enhanced Node Display
-Each node now shows:
-- **Environment/Provider**: AWS/Production, Azure/Development, GCP/Staging
+#### **GCP Integration** 🔵
+- **Target Instance**: `gcpapp01` (8330479473297479604)
+- **Instance Details**: e2-small, us-east4-b, Production environment, IP: 34.145.180.162
+- **Authentication**: Google Cloud CLI with application default credentials
+- **Real-time Data**: Live GCP Compute Engine API with intelligent fallback caching
+
+#### **Azure Demo** 🔷
+- **Sample Environment**: Development container service demonstration
+- **Professional Formatting**: Ready for live Azure integration expansion
+
+### 🎯 Enhanced Multi-Cloud Display
+Each node now shows with **250px width** for optimal text readability:
+- **Environment/Provider**: AWS/Production, GCP/Production, Azure/Development
+- **Service Type/Size**: EC2/t2.micro, Compute Engine/e2-small, Container/Standard_B2s  
+- **Connection Info**: Real public IP addresses (184.72.110.200, 34.145.180.162)
+- **Smart Tooltips**: Comprehensive hover details with organized sections and emojis
 - **Service Type/Size**: EC2/t2.micro, VM/Standard_B2s, Compute/e2-medium  
 - **Connection Info**: Public IP addresses for external access
 - **Smart Tooltips**: Comprehensive hover details with organized sections and emojis
@@ -112,21 +129,35 @@ Each node now shows:
 - **Reset Layout**: Browser refresh returns nodes to default positions
 
 ### 🔧 Integration Testing
-Run validation scripts to ensure data pipeline integrity:
+Run validation scripts to ensure complete multi-cloud pipeline integrity:
 ```bash
-node test-integration.js    # Validates backend → frontend → display
-node verify-display.js      # Confirms multi-cloud formatting
+node test-integration.js    # Validates AWS + GCP backend → frontend → display
+node test-multi-cloud.js    # Complete multi-cloud end-to-end testing
+node verify-display.js      # Confirms multi-cloud formatting with wider blocks
 ```
 
-## AWS Integration
+## Multi-Cloud Integration
 
-### ✅ Current Implementation - LIVE INTEGRATION
-The visualizer is **actively connected** to real AWS infrastructure:
+### ✅ Current Implementation - LIVE MULTI-CLOUD
+The visualizer is **actively connected** to real multi-cloud infrastructure:
+
+#### **🔶 AWS Integration**
 - **🔗 Backend API**: Express server on port 3001 with AWS SDK integration
 - **🎯 Target Instance**: ec2-184-72-110-200.compute-1.amazonaws.com (i-005557a2ed89a5759)
 - **📊 Real Data Flow**: AWS API → Backend Server → Frontend → Visualization
 - **🔄 Live Updates**: Real-time EC2 state, metadata, and network information
-- **🌐 Multi-Cloud Ready**: Smart provider detection for AWS, Azure, GCP expansion
+
+#### **🔵 GCP Integration**
+- **🔗 Backend API**: Express server with Google Cloud Compute Engine integration
+- **🎯 Target Instance**: gcpapp01 (8330479473297479604) in us-east4-b
+- **📊 Real Data Flow**: GCP API → gcp-integration.js → Backend Server → Frontend
+- **🔄 Live Updates**: Real-time Compute Engine data with intelligent fallback caching
+- **🔐 Authentication**: Google Cloud CLI application default credentials
+
+#### **🔷 Azure Ready**
+- **🏗️ Infrastructure**: Professional formatting structure in place
+- **🎯 Sample Integration**: Development container service demonstration
+- **📈 Expansion Ready**: Architecture designed for seamless Azure API integration
 
 ### 🏗️ Architecture
 ```

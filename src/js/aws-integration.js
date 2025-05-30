@@ -259,7 +259,7 @@ class EC2Service {
                     const mockData = await this.generateMockEC2Data();
                     const mockInstance = this.convertToNodeFormat(mockData[1]); // Get the database instance
                     mockInstance.metadata.dataSource = 'Mock Data';
-                    mockInstance.position = { x: 600, y: 200 }; // Position it to the right
+                    mockInstance.position = { x: 650, y: 200 }; // Position it to the right, adjusted for wider blocks
                     
                     return [realInstance, mockInstance];
                     
