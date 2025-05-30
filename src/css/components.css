@@ -1,0 +1,148 @@
+/* This file contains styles specific to components such as node blocks and connection lines, ensuring a consistent look and feel for the visual elements. */
+
+.node {
+    position: absolute;
+    width: 200px;
+    min-height: 150px; /* Increased further to ensure all text fits properly */
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    cursor: move;
+    user-select: none;
+    z-index: 10;
+    transition: transform 0.2s ease;
+}
+
+.node:hover {
+    transform: scale(1.02);
+}
+
+.node.dragging {
+    z-index: 100;
+    transform: rotate(2deg);
+}
+
+.node-header {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 8px 12px;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.node-title {
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+}
+
+.status-online {
+    background: #4CAF50;
+    box-shadow: 0 0 8px #4CAF50;
+}
+
+.status-warning {
+    background: #FF9800;
+    box-shadow: 0 0 8px #FF9800;
+}
+
+.status-offline {
+    background: #F44336;
+    box-shadow: 0 0 8px #F44336;
+}
+
+.node-content {
+    padding: 12px;
+    color: white;
+    font-size: 12px;
+}
+
+.node-info {
+    margin-bottom: 4px;
+}
+
+.node-meta {
+    font-size: 11px;
+    opacity: 0.9;
+    margin-bottom: 2px;
+}
+
+.node-label {
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+/* EC2-specific node styling */
+.node[id^="i-"] {
+    background: linear-gradient(135deg, #ff9a56 0%, #ffad56 100%);
+}
+
+.node[id^="i-"]:hover {
+    background: linear-gradient(135deg, #ff8a46 0%, #ff9d46 100%);
+}
+
+/* GCP-specific node styling */
+.node[id^="8"] {
+    background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
+}
+
+.node[id^="8"]:hover {
+    background: linear-gradient(135deg, #3275e4 0%, #24954c 100%);
+}
+
+/* Azure-specific node styling */
+.node[data-cloud-provider="Azure"] {
+    background: linear-gradient(135deg, #0078d4 0%, #106ebe 100%);
+}
+
+.node[data-cloud-provider="Azure"]:hover {
+    background: linear-gradient(135deg, #0063a5 0%, #0c5394 100%);
+}
+
+/* Environment-based styling */
+.node[data-environment="Production"] {
+    border: 2px solid #4CAF50;
+}
+
+.node[data-environment="Development"] {
+    border: 2px solid #2196F3;
+}
+
+.node[data-environment="Staging"] {
+    border: 2px solid #FF9800;
+}
+
+/* Connection line styles */
+.connection-line {
+    stroke: #666;
+    stroke-width: 2;
+    fill: none;
+    marker-end: url(#arrowhead);
+}
+
+.connection-line.active {
+    stroke: #4CAF50;
+    stroke-width: 3;
+}
+
+.placeholder {
+    width: 100%;
+    height: 100%;
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.5);
+    position: absolute;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #999;
+    font-size: 0.9em;
+}

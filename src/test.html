@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Infrastructure Visualizer - Debug</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            overflow: hidden;
+        }
+
+        #app {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        h1 {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #333;
+            z-index: 1000;
+        }
+
+        #nodes-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .node {
+            position: absolute;
+            width: 200px;
+            height: 120px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            cursor: move;
+            user-select: none;
+            z-index: 10;
+            transition: transform 0.2s ease;
+        }
+
+        .node:hover {
+            transform: scale(1.02);
+        }
+
+        .node.dragging {
+            z-index: 100;
+            transform: rotate(2deg);
+        }
+
+        .node-header {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 12px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .node-title {
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .status-online {
+            background: #4CAF50;
+            box-shadow: 0 0 8px #4CAF50;
+        }
+
+        .status-warning {
+            background: #FF9800;
+            box-shadow: 0 0 8px #FF9800;
+        }
+
+        .status-offline {
+            background: #F44336;
+            box-shadow: 0 0 8px #F44336;
+        }
+
+        .node-content {
+            padding: 12px;
+            color: white;
+            font-size: 12px;
+        }
+
+        .node-info {
+            margin-bottom: 4px;
+        }
+
+        .node-label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .connection-line {
+            stroke: #666;
+            stroke-width: 2;
+            fill: none;
+            marker-end: url(#arrowhead);
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <h1>Test Infrastructure Visualizer - Debug</h1>
+        <div id="nodes-container">
+            <!-- Draggable node blocks will be added here -->
+        </div>
+    </div>
+
+    <script>
+        console.log('Starting debug test...');
+
+        // Drag functionality
+        let draggedElement = null;
+        let dragOffset = { x: 0, y: 0 };
+
+        function makeDraggable(element) {
+            element.addEventListener('mousedown', startDrag);
+        }
+
+        function startDrag(e) {
+            draggedElement = e.currentTarget;
+            draggedElement.classList.add('dragging');
+            
+            const rect = draggedElement.getBoundingClientRect();
+            const containerRect = document.getElementById('nodes-container').getBoundingClientRect();
+            
+            dragOffset.x = e.clientX - (rect.left - containerRect.left);
+            dragOffset.y = e.clientY - (rect.top - containerRect.top);
+            
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+            
+            e.preventDefault();
+        }
+
+        function drag(e) {
+            if (!draggedElement) return;
+            
+            const containerRect = document.getElementById('nodes-container').getBoundingClientRect();
+            
+            const newX = e.clientX - containerRect.left - dragOffset.x;
+            const newY = e.clientY - containerRect.top - dragOffset.y;
+            
+            // Keep within bounds
+            const maxX = containerRect.width - draggedElement.offsetWidth;
+            const maxY = containerRect.height - draggedElement.offsetHeight;
+            
+            const constrainedX = Math.max(0, Math.min(newX, maxX));
+            const constrainedY = Math.max(0, Math.min(newY, maxY));
+            
+            draggedElement.style.left = constrainedX + 'px';
+            draggedElement.style.top = constrainedY + 'px';
+            
+            updateAllConnections();
+        }
+
+        function stopDrag() {
+            if (draggedElement) {
+                draggedElement.classList.remove('dragging');
+                draggedElement = null;
+            }
+            
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', stopDrag);
+        }
+
+        // Node creation
+        function createInfraNode(nodeData) {
+            console.log('Creating node:', nodeData.id);
+            const container = document.getElementById('nodes-container');
+            
+            // Create node element
+            const node = document.createElement('div');
+            node.className = 'node';
+            node.id = nodeData.id;
+            node.style.left = nodeData.position.x + 'px';
+            node.style.top = nodeData.position.y + 'px';
+            
+            // Create node header
+            const header = document.createElement('div');
+            header.className = 'node-header';
+            
+            const title = document.createElement('div');
+            title.className = 'node-title';
+            title.textContent = nodeData.title;
+            
+            const statusIndicator = document.createElement('div');
+            statusIndicator.className = `status-indicator status-${nodeData.status}`;
+            
+            header.appendChild(title);
+            header.appendChild(statusIndicator);
+            
+            // Create node content
+            const content = document.createElement('div');
+            content.className = 'node-content';
+            
+            const typeInfo = document.createElement('div');
+            typeInfo.className = 'node-info';
+            typeInfo.innerHTML = `<span class="node-label">Type:</span>${nodeData.type}`;
+            
+            const hostnameInfo = document.createElement('div');
+            hostnameInfo.className = 'node-info';
+            hostnameInfo.innerHTML = `<span class="node-label">Host:</span>${nodeData.hostname}`;
+            
+            const ipInfo = document.createElement('div');
+            ipInfo.className = 'node-info';
+            ipInfo.innerHTML = `<span class="node-label">IP:</span>${nodeData.ip}`;
+            
+            content.appendChild(typeInfo);
+            content.appendChild(hostnameInfo);
+            content.appendChild(ipInfo);
+            
+            // Assemble node
+            node.appendChild(header);
+            node.appendChild(content);
+            
+            // Make draggable
+            makeDraggable(node);
+            
+            container.appendChild(node);
+            
+            return node;
+        }
+
+        function getNodeCenter(nodeId) {
+            const node = document.getElementById(nodeId);
+            if (!node) return { x: 0, y: 0 };
+            
+            const rect = node.getBoundingClientRect();
+            const containerRect = document.getElementById('nodes-container').getBoundingClientRect();
+            
+            return {
+                x: rect.left - containerRect.left + rect.width / 2,
+                y: rect.top - containerRect.top + rect.height / 2
+            };
+        }
+
+        // Connection functions
+        function createConnection(connectionData) {
+            console.log('Creating connection:', connectionData);
+            const svg = document.getElementById('connections-svg');
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            
+            line.className = 'connection-line';
+            line.id = `connection-${connectionData.from}-${connectionData.to}`;
+            line.setAttribute('data-from', connectionData.from);
+            line.setAttribute('data-to', connectionData.to);
+            line.setAttribute('data-label', connectionData.label);
+            
+            updateConnectionPosition(line);
+            
+            svg.appendChild(line);
+            
+            return line;
+        }
+
+        function updateConnectionPosition(line) {
+            const fromId = line.getAttribute('data-from');
+            const toId = line.getAttribute('data-to');
+            
+            const fromCenter = getNodeCenter(fromId);
+            const toCenter = getNodeCenter(toId);
+            
+            line.setAttribute('x1', fromCenter.x);
+            line.setAttribute('y1', fromCenter.y);
+            line.setAttribute('x2', toCenter.x);
+            line.setAttribute('y2', toCenter.y);
+        }
+
+        function updateAllConnections() {
+            const connections = document.querySelectorAll('.connection-line');
+            connections.forEach(connection => {
+                updateConnectionPosition(connection);
+            });
+        }
+
+        function createConnectionsSVG() {
+            const container = document.getElementById('nodes-container');
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.id = 'connections-svg';
+            
+            // Add arrow marker definition
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            marker.setAttribute('id', 'arrowhead');
+            marker.setAttribute('markerWidth', '10');
+            marker.setAttribute('markerHeight', '7');
+            marker.setAttribute('refX', '9');
+            marker.setAttribute('refY', '3.5');
+            marker.setAttribute('orient', 'auto');
+            
+            const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            polygon.setAttribute('points', '0 0, 10 3.5, 0 7');
+            polygon.setAttribute('fill', '#666');
+            
+            marker.appendChild(polygon);
+            defs.appendChild(marker);
+            svg.appendChild(defs);
+            
+            container.appendChild(svg);
+        }
+
+        // Sample data
+        const sampleNodes = [
+            {
+                id: 'ec2-web-1',
+                type: 'EC2',
+                title: 'Web Server 1',
+                hostname: 'web-server-01',
+                ip: '10.0.1.10',
+                status: 'online',
+                position: { x: 100, y: 200 }
+            },
+            {
+                id: 'ec2-db-1',
+                type: 'EC2',
+                title: 'Database Server',
+                hostname: 'db-server-01',
+                ip: '10.0.1.20',
+                status: 'online',
+                position: { x: 500, y: 200 }
+            },
+            {
+                id: 'container-api',
+                type: 'Container',
+                title: 'API Service',
+                hostname: 'localhost',
+                ip: '127.0.0.1:8080',
+                status: 'warning',
+                position: { x: 300, y: 400 }
+            }
+        ];
+
+        const sampleConnections = [
+            { from: 'ec2-web-1', to: 'ec2-db-1', label: 'MySQL Connection' },
+            { from: 'ec2-web-1', to: 'container-api', label: 'API Calls' }
+        ];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing...');
+            
+            // Create SVG for connections
+            createConnectionsSVG();
+            
+            // Create nodes
+            sampleNodes.forEach(nodeData => {
+                createInfraNode(nodeData);
+            });
+            
+            // Create connections
+            sampleConnections.forEach(connection => {
+                createConnection(connection);
+            });
+            
+            console.log('Initialization complete!');
+        });
+    </script>
+</body>
+</html>
