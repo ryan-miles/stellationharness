@@ -110,12 +110,12 @@ app.get('/api/gcp-instance/:instanceName', async (req, res) => {
 // GCP API endpoint with default instance name
 app.get('/api/gcp-instance', async (req, res) => {
     try {
-        console.log(`📡 Fetching default GCP instance (gcpapp01)...`);
+        console.log(`📡 Fetching default GCP instance (finance-is)...`);
         
         const { zone = 'us-east4-b', project = 'operating-pod-461417-t6' } = req.query;
         
         // Get instance details from GCP (with real data fallback)
-        const instanceData = await gcpService.getInstanceDetails('gcpapp01', zone, project);
+        const instanceData = await gcpService.getInstanceDetails('finance-is', zone, project);
         
         console.log('✅ Successfully fetched GCP instance data');
         res.json(instanceData);
@@ -149,10 +149,9 @@ app.get('/api/all-instances', async (req, res) => {
             }
         } catch (awsError) {
             console.error('AWS fetch failed:', awsError.message);
-        }
-          // Fetch real GCP instance: gcpapp01
+        }          // Fetch real GCP instance: finance-is
         try {
-            const gcpData = await gcpService.getInstanceDetails('gcpapp01', 'us-east4-b', 'operating-pod-461417-t6');
+            const gcpData = await gcpService.getInstanceDetails('finance-is', 'us-east4-b', 'operating-pod-461417-t6');
             instances.push({
                 ...gcpService.convertToNodeFormat(gcpData),
                 cloudProvider: 'GCP',

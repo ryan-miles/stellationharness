@@ -20,7 +20,7 @@ class GCPService {
             console.log('📋 Using cached real instance data as fallback...');
             this.isInitialized = false; // Will use fallback data
         }
-    }    async getInstanceDetails(instanceName = 'gcpapp01', zone = 'us-east4-b', projectId = 'operating-pod-461417-t6') {
+    }    async getInstanceDetails(instanceName = 'finance-is', zone = 'us-east4-b', projectId = 'operating-pod-461417-t6') {
         await this.init(); // Always try to initialize
         
         if (this.isInitialized) {
@@ -42,18 +42,16 @@ class GCPService {
         // Fallback to real instance data if API call fails or not initialized
         console.log('📋 Using cached real instance data as fallback...');
         return this.getRealInstanceFallback();
-    }
-
-    // Fallback method with real instance data from gcloud CLI
+    }    // Fallback method with real instance data from gcloud CLI
     getRealInstanceFallback() {
         return {
             id: '8330479473297479604',
-            name: 'gcpapp01',
+            name: 'finance-is',
             type: 'Compute Engine',
-            title: 'gcpapp01',
-            hostname: 'gcpapp01',
+            title: 'finance-is',
+            hostname: 'finance-is',
             ip: '34.145.180.162',
-            status: 'running',
+            status: 'online', // GCP instance is running, map to frontend 'online'
             machineType: 'e2-small',
             zone: 'us-east4-b',
             project: 'operating-pod-461417-t6',
@@ -72,7 +70,7 @@ class GCPService {
                 isRealInstance: true,
                 dataSource: 'GCP CLI Cache'
             }
-        };    }
+        };}
 
     formatInstanceData(instance, projectId) {
         const machineType = instance.machineType.split('/').pop();
@@ -85,7 +83,23 @@ class GCPService {
         }
 
         // Get internal IP
-        const internalIP = instance.networkInterfaces[0].networkIP;
+        const internalIP = instance.networkInterfaces[0].networkIP;        // Map GCP status to frontend status values
+        let status = 'offline';
+        switch (instance.status.toLowerCase()) {
+            case 'running':
+                status = 'online';
+                break;
+            case 'stopping':
+            case 'staging':
+            case 'provisioning':
+                status = 'warning';
+                break;
+            case 'stopped':
+            case 'terminated':
+            default:
+                status = 'offline';
+                break;
+        }
 
         return {
             id: instance.id,
@@ -94,7 +108,7 @@ class GCPService {
             title: instance.name,
             hostname: instance.name,
             ip: externalIP !== 'No external IP' ? externalIP : internalIP,
-            status: instance.status.toLowerCase(),
+            status: status,
             machineType: machineType,
             zone: zone,
             project: projectId,
@@ -130,16 +144,32 @@ class GCPService {
         } else {
             return 'Production'; // Default
         }
-    }
-
-    convertToNodeFormat(gcpInstance, position = { x: 750, y: 300 }) {
+    }    convertToNodeFormat(gcpInstance, position = { x: 750, y: 300 }) {
+        // Map GCP status to frontend status values
+        let status = 'offline';
+        switch (gcpInstance.status.toLowerCase()) {
+            case 'running':
+                status = 'online';
+                break;
+            case 'stopping':
+            case 'staging':
+            case 'provisioning':
+                status = 'warning';
+                break;
+            case 'stopped':
+            case 'terminated':
+            default:
+                status = 'offline';
+                break;
+        }
+        
         return {
             id: gcpInstance.id,
             type: gcpInstance.type,
             title: gcpInstance.title,
             hostname: gcpInstance.hostname,
             ip: gcpInstance.ip,
-            status: gcpInstance.status === 'running' ? 'running' : 'offline',
+            status: status,
             position: position,
             metadata: gcpInstance.metadata
         };

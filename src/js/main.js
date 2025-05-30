@@ -25,10 +25,10 @@ const sampleNodes = [
     {
         id: '8330479473297479604',
         type: 'Compute Engine',
-        title: 'gcpapp01',
-        hostname: 'gcpapp01',
+        title: 'finance-is',
+        hostname: 'finance-is',
         ip: '34.145.180.162',
-        status: 'running',
+        status: 'online',
         position: { x: 750, y: 300 }, /* Moved further right to accommodate wider blocks */
         metadata: {
             environment: 'Production',
