@@ -89,74 +89,123 @@ document.addEventListener('DOMContentLoaded', function() {
 async function initializeVisualization() {
     console.log('Initializing visualization...');
     
-    // Add refresh button if it doesn't exist
+    // Add refresh button and admin controls if they don't exist
     if (!document.getElementById('refresh-btn')) {
         addRefreshButton();
+    }
+    if (!document.getElementById('admin-controls')) {
+        addAdminControls();
     }
     
     // Show loading indicator
     showLoadingIndicator();
     
     try {
-        // Try to get real EC2 data first
         let nodes = [];
         let dataSource = 'Unknown';
         
         if (window.ec2Service) {
-            console.log('🔍 Fetching real EC2 instances...');
-            const ec2Nodes = await window.ec2Service.getNodesFromEC2();
+            console.log('🔍 Fetching real multi-cloud instances...');
             
-            // Try to fetch real GCP data too
-            let gcpNodes = [];
             try {
-                console.log('🔍 Fetching real GCP instance...');
-                const response = await fetch('http://localhost:3001/api/gcp-instance');
+                // Use the new enhanced all-instances endpoint
+                const response = await fetch('http://localhost:3001/api/all-instances');
                 if (response.ok) {
-                    const gcpData = await response.json();
-                    // Convert to node format and update the sample data
-                    const gcpNode = {
-                        id: gcpData.id,
-                        type: gcpData.type,
-                        title: gcpData.name,
-                        hostname: gcpData.hostname,
-                        ip: gcpData.ip,
-                        status: gcpData.status,
-                        position: { x: 700, y: 300 },
-                        metadata: gcpData.metadata
-                    };
-                    gcpNodes = [gcpNode];
-                    console.log('✅ Successfully fetched real GCP data:', gcpData.name);
+                    const allInstances = await response.json();
+                    console.log(`📊 Fetched ${allInstances.length} instances from enhanced backend`);
+                    
+                    // Position instances in a grid layout
+                    allInstances.forEach((instance, index) => {
+                        const row = Math.floor(index / 3); // 3 instances per row
+                        const col = index % 3;
+                        instance.position = { 
+                            x: 200 + (col * 320), // 320px spacing for 250px wide nodes + margins
+                            y: 150 + (row * 220)  // 220px vertical spacing
+                        };
+                    });
+                    
+                    // Add Azure sample if not present
+                    const azureSampleNode = sampleNodes.find(n => n.metadata?.cloudProvider === 'Azure');
+                    if (azureSampleNode && !allInstances.some(n => n.metadata?.cloudProvider === 'Azure')) {
+                        azureSampleNode.position = { 
+                            x: 200 + (allInstances.length % 3) * 320, 
+                            y: 150 + Math.floor(allInstances.length / 3) * 220 
+                        };
+                        allInstances.push(azureSampleNode);
+                    }
+                    
+                    nodes = allInstances;
+                    
+                    // Analyze data sources
+                    const awsNodes = nodes.filter(n => n.cloudProvider === 'AWS');
+                    const gcpNodes = nodes.filter(n => n.cloudProvider === 'GCP');
+                    const azureNodes = nodes.filter(n => n.cloudProvider === 'Azure' || n.metadata?.cloudProvider === 'Azure');
+                    
+                    const sources = [];
+                    if (awsNodes.length > 0) sources.push(`${awsNodes.length} AWS`);
+                    if (gcpNodes.length > 0) sources.push(`${gcpNodes.length} GCP`);
+                    if (azureNodes.length > 0) sources.push(`${azureNodes.length} Azure`);
+                    
+                    dataSource = `Enhanced Multi-Cloud (${sources.join(' + ')})`;
+                    showSuccessMessage(`✅ Enhanced multi-cloud: ${sources.join(' + ')}`);
+                } else {
+                    throw new Error(`Enhanced backend responded with ${response.status}`);
                 }
-            } catch (gcpError) {
-                console.log('⚠️ Could not fetch live GCP data, using cached data:', gcpError.message);
-            }
-            
-            // Combine real data with remaining sample nodes
-            const azureSampleNode = sampleNodes.find(n => n.metadata?.cloudProvider === 'Azure');
-            const gcpRealOrSample = gcpNodes.length > 0 ? gcpNodes : [sampleNodes.find(n => n.metadata?.cloudProvider === 'GCP')];
-            
-            nodes = [...ec2Nodes, ...gcpRealOrSample, azureSampleNode].filter(Boolean);
-            
-            // Determine data source from nodes
-            const realAwsNodes = ec2Nodes.filter(n => n.metadata?.isRealInstance);
-            const realGcpNodes = gcpNodes.filter(n => n.metadata?.isRealInstance);
-            
-            if (realAwsNodes.length > 0 || realGcpNodes.length > 0) {
-                const realCount = realAwsNodes.length + realGcpNodes.length;
-                const cloudSources = [];
-                if (realAwsNodes.length > 0) cloudSources.push(`${realAwsNodes.length} AWS`);
-                if (realGcpNodes.length > 0) cloudSources.push(`${realGcpNodes.length} GCP`);
+            } catch (enhancedError) {
+                console.log('⚠️ Enhanced backend not available, trying fallback methods:', enhancedError.message);
                 
-                dataSource = `Multi-Cloud Live (${cloudSources.join(' + ')}, 1 Azure sample)`;
-                showSuccessMessage(`✅ Live multi-cloud: ${cloudSources.join(' + ')} + Azure demo`);
-            } else {
-                dataSource = `Multi-Cloud Demo (${nodes.length} total nodes)`;
+                // Fallback to individual APIs
+                const ec2Nodes = await window.ec2Service.getMultipleInstancesFromEC2();
+                
+                // Try to fetch GCP data
+                let gcpNodes = [];
+                try {
+                    const response = await fetch('http://localhost:3001/api/gcp-instance');
+                    if (response.ok) {
+                        const gcpData = await response.json();
+                        const gcpNode = {
+                            id: gcpData.id,
+                            type: gcpData.type,
+                            title: gcpData.name,
+                            hostname: gcpData.hostname,
+                            ip: gcpData.ip,
+                            status: gcpData.status,
+                            position: { x: 700, y: 300 },
+                            metadata: gcpData.metadata
+                        };
+                        gcpNodes = [gcpNode];
+                        console.log('✅ Successfully fetched real GCP data:', gcpData.name);
+                    }
+                } catch (gcpError) {
+                    console.log('⚠️ Could not fetch live GCP data, using cached data:', gcpError.message);
+                    gcpNodes = [sampleNodes.find(n => n.metadata?.cloudProvider === 'GCP')];
+                }
+                
+                // Combine real data with remaining sample nodes
+                const azureSampleNode = sampleNodes.find(n => n.metadata?.cloudProvider === 'Azure');
+                
+                nodes = [...ec2Nodes, ...gcpNodes, azureSampleNode].filter(Boolean);
+                
+                // Determine data source from nodes
+                const realAwsNodes = ec2Nodes.filter(n => n.metadata?.isRealInstance);
+                const realGcpNodes = gcpNodes.filter(n => n.metadata?.isRealInstance);
+                
+                if (realAwsNodes.length > 0 || realGcpNodes.length > 0) {
+                    const cloudSources = [];
+                    if (realAwsNodes.length > 0) cloudSources.push(`${realAwsNodes.length} AWS`);
+                    if (realGcpNodes.length > 0) cloudSources.push(`${realGcpNodes.length} GCP`);
+                    
+                    dataSource = `Multi-Cloud Live (${cloudSources.join(' + ')}, 1 Azure sample)`;
+                    showSuccessMessage(`✅ Live multi-cloud: ${cloudSources.join(' + ')} + Azure demo`);
+                } else {
+                    dataSource = `Multi-Cloud Demo (${nodes.length} total nodes)`;
+                }
             }
         }
         
-        // Fall back to sample data if no EC2 data available
+        // Fall back to sample data if no data available
         if (nodes.length === 0) {
-            console.log('⚠️ No EC2 data available, using sample data...');
+            console.log('⚠️ No data available, using sample data...');
             nodes = sampleNodes;
             dataSource = 'Sample Data';
         }
@@ -189,7 +238,7 @@ async function initializeVisualization() {
         hideLoadingIndicator();
         
         // Show error and fall back to sample data
-        showErrorMessage('Failed to load AWS data. Using sample data instead.');
+        showErrorMessage('Failed to load data. Using sample data instead.');
         currentNodes = sampleNodes;
         currentConnections = generateSmartConnections(sampleNodes);
         
@@ -387,4 +436,749 @@ function addRefreshButton() {
     });
     
     app.appendChild(refreshButton);
+}
+
+// Add admin controls for managing instances
+function addAdminControls() {
+    const app = document.getElementById('app');
+    
+    const adminPanel = document.createElement('div');
+    adminPanel.id = 'admin-controls';
+    adminPanel.innerHTML = `
+        <div class="admin-panel">
+            <h3>🛠️ Instance Management</h3>
+            <div class="admin-form">
+                <div class="form-group">
+                    <label for="instance-id">AWS Instance ID:</label>
+                    <input type="text" id="instance-id" placeholder="i-1234567890abcdef0" />
+                </div>
+                <div class="form-group">
+                    <label for="instance-alias">Alias (Optional):</label>
+                    <input type="text" id="instance-alias" placeholder="My Server" />
+                </div>
+                <div class="form-group">
+                    <label for="instance-description">Description (Optional):</label>
+                    <input type="text" id="instance-description" placeholder="Description of the server" />
+                </div>
+                <div class="form-buttons">
+                    <button id="add-instance-btn" class="btn btn-primary">➕ Add Instance</button>
+                    <button id="discover-instances-btn" class="btn btn-secondary">🔍 Auto-Discover</button>
+                    <button id="discovery-config-btn" class="btn btn-info">⚙️ Discovery Settings</button>
+                </div>
+            </div>
+            
+            <!-- Auto-Discovery Configuration Panel -->
+            <div id="discovery-config-panel" class="admin-section" style="display: none;">
+                <h3>🔍 Auto-Discovery Configuration</h3>
+                <div class="discovery-status">
+                    <div class="status-row">
+                        <span class="status-label">Status:</span>
+                        <span id="discovery-status">Loading...</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">Auto-Discovered Instances:</span>
+                        <span id="auto-discovered-count">-</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">Total Configured:</span>
+                        <span id="total-configured-count">-</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="enable-auto-discovery" />
+                        Enable automatic instance discovery
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="discovery-filters">Instance State Filter:</label>
+                    <select id="discovery-filters" multiple>
+                        <option value="running" selected>Running</option>
+                        <option value="stopped">Stopped</option>
+                        <option value="pending">Pending</option>
+                        <option value="stopping">Stopping</option>
+                        <option value="rebooting">Rebooting</option>
+                    </select>
+                </div>
+                <div class="form-buttons">
+                    <button id="save-discovery-config-btn" class="btn btn-primary">💾 Save Settings</button>
+                    <button id="refresh-discovery-status-btn" class="btn btn-secondary">🔄 Refresh Status</button>
+                    <button id="close-discovery-config-btn" class="btn btn-outline">✖️ Close</button>
+                </div>
+            </div>
+            
+            <div id="admin-status" class="admin-status"></div>
+        </div>
+    `;
+    
+    // Insert after the title
+    const title = app.querySelector('h1');
+    title.insertAdjacentElement('afterend', adminPanel);
+    
+    // Add event listeners
+    document.getElementById('add-instance-btn').addEventListener('click', addInstanceHandler);
+    document.getElementById('discover-instances-btn').addEventListener('click', discoverInstancesHandler);
+    document.getElementById('discovery-config-btn').addEventListener('click', showDiscoveryConfigPanel);
+    document.getElementById('save-discovery-config-btn').addEventListener('click', saveDiscoveryConfig);
+    document.getElementById('refresh-discovery-status-btn').addEventListener('click', refreshDiscoveryStatus);
+    document.getElementById('close-discovery-config-btn').addEventListener('click', hideDiscoveryConfigPanel);
+    
+    // Load initial discovery status
+    refreshDiscoveryStatus();
+    
+    // Add CSS if not already present
+    if (!document.getElementById('admin-styles')) {
+        const styles = document.createElement('style');
+        styles.id = 'admin-styles';
+        styles.textContent = `
+            .admin-panel {
+                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                border: 2px solid #ddd;
+                border-radius: 8px;
+                padding: 15px;
+                margin: 20px 0;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }
+            .admin-panel h3 {
+                margin: 0 0 15px 0;
+                color: #333;
+                font-size: 18px;
+            }
+            .admin-form {
+                display: grid;
+                gap: 10px;
+                max-width: 500px;
+            }
+            .form-group {
+                display: flex;
+                flex-direction: column;
+            }
+            .form-group label {
+                font-weight: bold;
+                margin-bottom: 5px;
+                color: #555;
+            }
+            .form-group input {
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            .form-buttons {
+                display: flex;
+                gap: 10px;
+                margin-top: 10px;
+            }
+            .btn {
+                padding: 10px 16px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: bold;
+                transition: background-color 0.3s;
+            }
+            .btn-primary {
+                background-color: #007bff;
+                color: white;
+            }
+            .btn-primary:hover {
+                background-color: #0056b3;
+            }
+            .btn-secondary {
+                background-color: #6c757d;
+                color: white;
+            }
+            .btn-secondary:hover {
+                background-color: #5a6268;
+            }
+            .btn-info {
+                background-color: #17a2b8;
+                color: white;
+            }
+            .btn-info:hover {
+                background-color: #138496;
+            }
+            .btn-outline {
+                background-color: transparent;
+                color: #6c757d;
+                border: 1px solid #6c757d;
+            }
+            .btn-outline:hover {
+                background-color: #6c757d;
+                color: white;
+            }
+            .discovery-status {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                padding: 12px;
+                margin-bottom: 15px;
+            }
+            .status-row {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 5px;
+            }
+            .status-row:last-child {
+                margin-bottom: 0;
+            }
+            .status-label {
+                font-weight: bold;
+                color: #555;
+            }
+            .form-group select {
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 14px;
+                min-height: 80px;
+            }
+            .form-group input[type="checkbox"] {
+                width: auto;
+                margin-right: 8px;
+            }
+            .form-group label:has(input[type="checkbox"]) {
+                flex-direction: row;
+                align-items: center;
+            }
+            .admin-status {
+                margin-top: 15px;
+                padding: 10px;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            .status-success {
+                background-color: #d4edda;
+                border: 1px solid #c3e6cb;
+                color: #155724;
+            }
+            .status-error {
+                background-color: #f8d7da;
+                border: 1px solid #f5c6cb;
+                color: #721c24;
+            }
+            .status-info {
+                background-color: #d1ecf1;
+                border: 1px solid #bee5eb;
+                color: #0c5460;
+            }
+        `;
+        document.head.appendChild(styles);
+    }
+}
+
+async function addInstanceHandler() {
+    const instanceId = document.getElementById('instance-id').value.trim();
+    const alias = document.getElementById('instance-alias').value.trim();
+    const description = document.getElementById('instance-description').value.trim();
+    const statusDiv = document.getElementById('admin-status');
+    
+    if (!instanceId) {
+        showAdminStatus('⚠️ Please enter an Instance ID', 'error');
+        return;
+    }
+    
+    // Validate instance ID format
+    if (!instanceId.match(/^i-[0-9a-f]{8,17}$/)) {
+        showAdminStatus('⚠️ Invalid Instance ID format. Should be like: i-1234567890abcdef0', 'error');
+        return;
+    }
+    
+    try {
+        showAdminStatus('🔄 Adding instance...', 'info');
+        
+        if (window.ec2Service) {
+            const result = await window.ec2Service.addInstance(instanceId, alias, description);
+            showAdminStatus(`✅ Successfully added: ${result.instance.alias}`, 'success');
+            
+            // Clear form
+            document.getElementById('instance-id').value = '';
+            document.getElementById('instance-alias').value = '';
+            document.getElementById('instance-description').value = '';
+            
+            // Refresh the visualization
+            setTimeout(() => {
+                refreshVisualization();
+            }, 1000);
+        } else {
+            showAdminStatus('❌ EC2 Service not available', 'error');
+        }
+    } catch (error) {
+        showAdminStatus(`❌ Failed to add instance: ${error.message}`, 'error');
+    }
+}
+
+async function discoverInstancesHandler() {
+    showAdminStatus('🔍 Discovering AWS instances...', 'info');
+    
+    try {
+        const response = await fetch('http://localhost:3001/api/discover-instances', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enableAutoDiscovery: true })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Discovery failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.discoveredInstances && result.discoveredInstances.length > 0) {
+            showAdminStatus(
+                `✅ Discovered ${result.discoveredInstances.length} new instances! Refreshing view...`, 
+                'success'
+            );
+            
+            // Refresh the visualization to show newly discovered instances
+            setTimeout(() => {
+                initializeVisualization();
+            }, 1000);
+        } else {
+            showAdminStatus('🔍 No new instances found to discover', 'info');
+        }
+        
+    } catch (error) {
+        console.error('Auto-discovery error:', error);
+        showAdminStatus(`❌ Discovery failed: ${error.message}`, 'error');
+    }
+}
+
+function showAdminStatus(message, type) {
+    const statusDiv = document.getElementById('admin-status');
+    statusDiv.textContent = message;
+    statusDiv.className = `admin-status status-${type}`;
+    
+    // Auto-clear after 5 seconds for success messages
+    if (type === 'success') {
+        setTimeout(() => {
+            statusDiv.textContent = '';
+            statusDiv.className = 'admin-status';
+        }, 5000);
+    }
+}
+
+// Enhanced refresh function
+async function refreshVisualization() {
+    console.log('🔄 Refreshing visualization...');
+    
+    // Clear current nodes and connections
+    const container = document.getElementById('nodes-container');
+    container.innerHTML = '';
+    
+    // Clear SVG connections
+    const existingSVG = document.getElementById('connections-svg');
+    if (existingSVG) {
+        existingSVG.remove();
+    }
+    
+    // Re-initialize
+    await initializeVisualization();
+}
+
+// Auto-discovery configuration functions
+function showDiscoveryConfigPanel() {
+    const panel = document.getElementById('discovery-config-panel');
+    panel.style.display = 'block';
+    refreshDiscoveryStatus();
+}
+
+function hideDiscoveryConfigPanel() {
+    const panel = document.getElementById('discovery-config-panel');
+    panel.style.display = 'none';
+}
+
+async function refreshDiscoveryStatus() {
+    try {
+        const response = await fetch('http://localhost:3001/api/auto-discovery/status');
+        if (!response.ok) {
+            throw new Error(`Status check failed: ${response.status}`);
+        }
+        
+        const status = await response.json();
+        
+        // Update status display
+        document.getElementById('discovery-status').textContent = 
+            status.enabled ? '✅ Enabled' : '❌ Disabled';
+        document.getElementById('auto-discovered-count').textContent = status.autoDiscoveredCount;
+        document.getElementById('total-configured-count').textContent = status.configuredInstances;
+        
+        // Update form controls
+        document.getElementById('enable-auto-discovery').checked = status.enabled;
+        
+        // Update filter selection
+        const filterSelect = document.getElementById('discovery-filters');
+        Array.from(filterSelect.options).forEach(option => {
+            const hasFilter = status.filters.some(filter => 
+                filter.Name === 'instance-state-name' && 
+                filter.Values.includes(option.value)
+            );
+            option.selected = hasFilter;
+        });
+        
+    } catch (error) {
+        console.error('Failed to refresh discovery status:', error);
+        showAdminStatus(`❌ Failed to load discovery status: ${error.message}`, 'error');
+    }
+}
+
+async function saveDiscoveryConfig() {
+    try {
+        const enabled = document.getElementById('enable-auto-discovery').checked;
+        const filterSelect = document.getElementById('discovery-filters');
+        const selectedStates = Array.from(filterSelect.selectedOptions).map(option => option.value);
+        
+        const filters = selectedStates.length > 0 ? [
+            { Name: 'instance-state-name', Values: selectedStates }
+        ] : [];
+        
+        showAdminStatus('💾 Saving discovery configuration...', 'info');
+        
+        const response = await fetch('http://localhost:3001/api/auto-discovery/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, filters })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Save failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        showAdminStatus(`✅ ${result.message}`, 'success');
+        
+        // Refresh status display
+        setTimeout(() => {
+            refreshDiscoveryStatus();
+        }, 500);
+        
+    } catch (error) {
+        console.error('Failed to save discovery config:', error);
+        showAdminStatus(`❌ Failed to save configuration: ${error.message}`, 'error');
+    }
+}
+
+// Node Selection and Visibility Management
+class NodeSelectionManager {
+    constructor() {
+        this.instanceLibrary = [];
+        this.selectedInstances = new Set();
+        this.filterProvider = 'all';
+        this.filterStatus = 'all';
+        this.searchQuery = '';
+    }
+
+    async loadInstanceLibrary() {
+        try {
+            const response = await fetch('http://localhost:3001/api/instance-library');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const library = await response.json();
+            this.instanceLibrary = library;
+            console.log('📚 Loaded instance library:', library.summary);
+            return library;
+        } catch (error) {
+            console.error('❌ Failed to load instance library:', error);
+            throw error;
+        }
+    }
+
+    async toggleInstanceVisibility(provider, instanceId, visible) {
+        try {
+            const response = await fetch('http://localhost:3001/api/instance-library/toggle-visibility', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, instanceId, visible })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log(`✅ Toggled ${instanceId} visibility to ${visible}`);
+            
+            // Update local library
+            await this.loadInstanceLibrary();
+            this.renderSelectionPanel();
+            
+            return result;
+        } catch (error) {
+            console.error('❌ Failed to toggle instance visibility:', error);
+            throw error;
+        }
+    }
+
+    async bulkToggleVisibility(instances, visible) {
+        try {
+            const response = await fetch('http://localhost:3001/api/instance-library/bulk-toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instances, visible })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log(`✅ Bulk toggled ${result.updatedCount} instances to ${visible}`);
+            
+            // Update local library and UI
+            await this.loadInstanceLibrary();
+            this.renderSelectionPanel();
+            
+            return result;
+        } catch (error) {
+            console.error('❌ Failed to bulk toggle visibility:', error);
+            throw error;
+        }
+    }
+
+    getFilteredInstances() {
+        const allInstances = [
+            ...(this.instanceLibrary.aws || []),
+            ...(this.instanceLibrary.gcp || []),
+            ...(this.instanceLibrary.azure || [])
+        ];
+
+        return allInstances.filter(instance => {
+            // Provider filter
+            if (this.filterProvider !== 'all' && instance.cloudProvider.toLowerCase() !== this.filterProvider) {
+                return false;
+            }
+
+            // Status filter
+            if (this.filterStatus !== 'all') {
+                if (this.filterStatus === 'visible' && !instance.isVisible) return false;
+                if (this.filterStatus === 'hidden' && instance.isVisible) return false;
+                if (this.filterStatus === 'online' && instance.status !== 'online') return false;
+                if (this.filterStatus === 'offline' && instance.status !== 'offline') return false;
+            }
+
+            // Search filter
+            if (this.searchQuery) {
+                const query = this.searchQuery.toLowerCase();
+                const searchText = `${instance.title} ${instance.hostname || ''} ${instance.ip || ''} ${instance.cloudProvider}`.toLowerCase();
+                if (!searchText.includes(query)) return false;
+            }
+
+            return true;
+        });
+    }
+
+    renderSelectionPanel() {
+        const panel = document.getElementById('node-selection-panel');
+        if (!panel) return;
+
+        const filteredInstances = this.getFilteredInstances();
+        const summary = this.instanceLibrary.summary || { total: 0, visible: 0, hidden: 0 };
+
+        panel.innerHTML = `
+            <div class="selection-header">
+                <h3>🔧 Node Selection Manager</h3>
+                <div class="summary-stats">
+                    <span class="stat">📊 Total: ${summary.total}</span>
+                    <span class="stat visible">👁️ Visible: ${summary.visible}</span>
+                    <span class="stat hidden">🙈 Hidden: ${summary.hidden}</span>
+                </div>
+            </div>
+
+            <div class="selection-controls">
+                <div class="filter-row">
+                    <select id="provider-filter" class="filter-select">
+                        <option value="all">All Providers</option>
+                        <option value="aws">AWS</option>
+                        <option value="gcp">GCP</option>
+                        <option value="azure">Azure</option>
+                    </select>
+                    
+                    <select id="status-filter" class="filter-select">
+                        <option value="all">All Status</option>
+                        <option value="visible">Visible</option>
+                        <option value="hidden">Hidden</option>
+                        <option value="online">Online</option>
+                        <option value="offline">Offline</option>
+                    </select>
+                    
+                    <input type="text" id="search-instances" placeholder="🔍 Search instances..." class="search-input">
+                </div>
+                
+                <div class="bulk-actions">
+                    <button id="select-all-btn" class="action-btn secondary">Select All</button>
+                    <button id="select-none-btn" class="action-btn secondary">Select None</button>
+                    <button id="show-selected-btn" class="action-btn primary">👁️ Show Selected</button>
+                    <button id="hide-selected-btn" class="action-btn warning">🙈 Hide Selected</button>
+                </div>
+            </div>
+
+            <div class="instance-list">
+                ${filteredInstances.map(instance => this.renderInstanceItem(instance)).join('')}
+            </div>
+        `;
+
+        this.attachEventListeners();
+    }
+
+    renderInstanceItem(instance) {
+        const isSelected = this.selectedInstances.has(instance.configId);
+        const statusIcon = this.getStatusIcon(instance.status);
+        const providerBadge = this.getProviderBadge(instance.cloudProvider);
+        
+        return `
+            <div class="instance-item ${instance.isVisible ? 'visible' : 'hidden'}" data-instance-id="${instance.configId}" data-provider="${instance.cloudProvider.toLowerCase()}">
+                <div class="instance-checkbox">
+                    <input type="checkbox" ${isSelected ? 'checked' : ''} class="instance-select">
+                </div>
+                
+                <div class="instance-info">
+                    <div class="instance-title">
+                        ${statusIcon} ${instance.title}
+                        ${providerBadge}
+                    </div>
+                    <div class="instance-details">
+                        <span class="instance-id">${instance.id || instance.configId}</span>
+                        <span class="instance-ip">${instance.ip || 'No IP'}</span>
+                    </div>
+                </div>
+                
+                <div class="instance-actions">
+                    <button class="visibility-toggle ${instance.isVisible ? 'visible' : 'hidden'}" 
+                            onclick="nodeSelectionManager.toggleInstanceVisibility('${instance.cloudProvider.toLowerCase()}', '${instance.configId}', ${!instance.isVisible})">
+                        ${instance.isVisible ? '👁️' : '🙈'}
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    getStatusIcon(status) {
+        switch (status) {
+            case 'online': return '🟢';
+            case 'warning': return '🟡';
+            case 'offline': return '🔴';
+            case 'unavailable': return '❌';
+            default: return '⚪';
+        }
+    }
+
+    getProviderBadge(provider) {
+        const badges = {
+            'AWS': '<span class="provider-badge aws">AWS</span>',
+            'GCP': '<span class="provider-badge gcp">GCP</span>',
+            'Azure': '<span class="provider-badge azure">Azure</span>'
+        };
+        return badges[provider] || `<span class="provider-badge">${provider}</span>`;
+    }
+
+    attachEventListeners() {
+        // Filter listeners
+        document.getElementById('provider-filter').addEventListener('change', (e) => {
+            this.filterProvider = e.target.value;
+            this.renderSelectionPanel();
+        });
+
+        document.getElementById('status-filter').addEventListener('change', (e) => {
+            this.filterStatus = e.target.value;
+            this.renderSelectionPanel();
+        });
+
+        document.getElementById('search-instances').addEventListener('input', (e) => {
+            this.searchQuery = e.target.value;
+            this.renderSelectionPanel();
+        });
+
+        // Bulk action listeners
+        document.getElementById('select-all-btn').addEventListener('click', () => {
+            const filteredInstances = this.getFilteredInstances();
+            filteredInstances.forEach(instance => this.selectedInstances.add(instance.configId));
+            this.renderSelectionPanel();
+        });
+
+        document.getElementById('select-none-btn').addEventListener('click', () => {
+            this.selectedInstances.clear();
+            this.renderSelectionPanel();
+        });
+
+        document.getElementById('show-selected-btn').addEventListener('click', () => {
+            this.bulkToggleSelected(true);
+        });
+
+        document.getElementById('hide-selected-btn').addEventListener('click', () => {
+            this.bulkToggleSelected(false);
+        });
+
+        // Individual checkbox listeners
+        document.querySelectorAll('.instance-select').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const instanceItem = e.target.closest('.instance-item');
+                const instanceId = instanceItem.dataset.instanceId;
+                
+                if (e.target.checked) {
+                    this.selectedInstances.add(instanceId);
+                } else {
+                    this.selectedInstances.delete(instanceId);
+                }
+            });
+        });
+    }
+
+    async bulkToggleSelected(visible) {
+        if (this.selectedInstances.size === 0) {
+            showAdminStatus('⚠️ No instances selected', 'warning');
+            return;
+        }
+
+        const instances = [];
+        this.selectedInstances.forEach(instanceId => {
+            const instance = this.getFilteredInstances().find(i => i.configId === instanceId);
+            if (instance) {
+                instances.push({
+                    provider: instance.cloudProvider.toLowerCase(),
+                    instanceId: instance.configId
+                });
+            }
+        });
+
+        try {
+            showAdminStatus(`🔄 ${visible ? 'Showing' : 'Hiding'} ${instances.length} instances...`, 'info');
+            await this.bulkToggleVisibility(instances, visible);
+            
+            this.selectedInstances.clear();
+            showAdminStatus(`✅ ${visible ? 'Showed' : 'Hid'} ${instances.length} instances`, 'success');
+            
+            // Refresh the main visualization
+            setTimeout(() => {
+                initializeVisualization();
+            }, 1000);
+            
+        } catch (error) {
+            showAdminStatus(`❌ Failed to update instances: ${error.message}`, 'error');
+        }
+    }
+}
+
+// Global instance
+const nodeSelectionManager = new NodeSelectionManager();
+
+// Function to show/hide the node selection panel
+async function toggleNodeSelectionPanel() {
+    const panel = document.getElementById('node-selection-panel');
+    
+    if (panel.style.display === 'none' || !panel.style.display) {
+        try {
+            showAdminStatus('📚 Loading instance library...', 'info');
+            await nodeSelectionManager.loadInstanceLibrary();
+            nodeSelectionManager.renderSelectionPanel();
+            panel.style.display = 'block';
+            showAdminStatus('✅ Instance library loaded', 'success');
+        } catch (error) {
+            showAdminStatus(`❌ Failed to load instances: ${error.message}`, 'error');
+        }
+    } else {
+        panel.style.display = 'none';
+    }
 }

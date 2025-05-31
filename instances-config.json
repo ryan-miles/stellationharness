@@ -1,0 +1,56 @@
+{
+  "aws": {
+    "region": "us-east-1",
+    "instances": [
+      {
+        "id": "i-005557a2ed89a5759",
+        "alias": "AmLinApp-01",
+        "description": "Production web application server",
+        "monitoringEnabled": true
+      },
+      {
+        "id": "i-0934f7a310aff0ad7",
+        "alias": "AskSagePrototype",
+        "description": "Added via API",
+        "monitoringEnabled": true,
+        "addedAt": "2025-05-31T20:49:16.192Z"
+      }
+    ],
+    "autoDiscovery": {
+      "enabled": true,
+      "filters": [
+        {
+          "Name": "instance-state-name",
+          "Values": [
+            "running"
+          ]
+        }
+      ]
+    }
+  },
+  "gcp": {
+    "project": "operating-pod-461417-t6",
+    "instances": [
+      {
+        "name": "finance-is",
+        "zone": "us-east4-b",
+        "alias": "Finance System",
+        "description": "GCP production finance application",
+        "monitoringEnabled": true
+      }
+    ]
+  },
+  "azure": {
+    "subscriptionId": "",
+    "resourceGroup": "",
+    "instances": [
+      {
+        "name": "azure-container-dev",
+        "alias": "API Service",
+        "description": "Development container service",
+        "monitoringEnabled": false,
+        "isDemo": true
+      }
+    ]
+  }
+}
