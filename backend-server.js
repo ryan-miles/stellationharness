@@ -450,13 +450,16 @@ async function discoverEC2Instances(filters = []) {
     const instances = [];
     
     for (const reservation of data.Reservations) {
-        for (const instance of reservation.Instances) {
-            // Skip if already in configured instances
+        for (const instance of reservation.Instances) {            // Skip if already in configured instances
             const isConfigured = instancesConfig.aws?.instances?.some(cfg => cfg.id === instance.InstanceId);
             if (!isConfigured) {
+                // Get the Name tag from AWS
+                const nameTag = instance.Tags?.find(tag => tag.Key === 'Name');
+                const alias = nameTag?.Value || `Auto-${instance.InstanceId.slice(-8)}`;
+                
                 const nodeData = convertInstanceToNode(instance, {
                     id: instance.InstanceId,
-                    alias: `Auto-${instance.InstanceId.slice(-8)}`,
+                    alias: alias,
                     description: 'Auto-discovered instance',
                     monitoringEnabled: true
                 });
