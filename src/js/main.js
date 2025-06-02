@@ -1,5 +1,28 @@
 console.log('main.js loaded');
 
+// Configuration for API endpoints
+const CONFIG = {
+    backend: {
+        url: 'http://localhost:3001',
+        endpoints: {
+            instances: '/api/ec2-instances',
+            allInstances: '/api/all-instances',
+            instance: '/api/ec2-instance',
+            gcpInstance: '/api/gcp-instance',
+            status: '/api/ec2-instance/status',
+            health: '/api/health',
+            addInstance: '/api/config/aws/add-instance',
+            removeInstance: '/api/config/aws/remove-instance',
+            discoverInstances: '/api/discover-instances',
+            autoDiscoveryStatus: '/api/auto-discovery/status',
+            autoDiscoveryToggle: '/api/auto-discovery/toggle',
+            instanceLibrary: '/api/instance-library',
+            instanceLibraryToggleVisibility: '/api/instance-library/toggle-visibility',
+            instanceLibraryBulkToggle: '/api/instance-library/bulk-toggle'
+        }
+    }
+};
+
 // Global variables for nodes and connections
 let currentNodes = [];
 let currentConnections = [];
@@ -80,11 +103,45 @@ function generateSmartConnections(nodes) {
     return connections;
 }
 
-// Initialize the application
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing...');
-    initializeVisualization();
-});
+// **STANDARDIZED FRONTEND ERROR HANDLING**
+const FrontendErrorHandler = {
+    // Standard error logging with context
+    logError(operation, error, context = {}) {
+        console.error(`❌ [Frontend-${operation}] Error:`, {
+            message: error.message,
+            context,
+            timestamp: new Date().toISOString()
+        });
+    },
+
+    // Handle fetch errors consistently
+    async handleFetchError(operation, response, fallbackMessage = 'Operation failed') {
+        let errorMessage = fallbackMessage;
+        
+        try {
+            if (response.headers.get('content-type')?.includes('application/json')) {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorData.message || fallbackMessage;
+            } else {
+                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            }
+        } catch (parseError) {
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        
+        this.logError(operation, new Error(errorMessage), { 
+            status: response.status,
+            statusText: response.statusText 
+        });
+        
+        return errorMessage;
+    },
+
+    // Show consistent error messages to user
+    showUserError(message, type = 'error') {
+        showAdminStatus(message, type);
+    }
+};
 
 async function initializeVisualization() {
     console.log('Initializing visualization...');
@@ -109,10 +166,18 @@ async function initializeVisualization() {
             
             try {
                 // Use the new enhanced all-instances endpoint
-                const response = await fetch('http://localhost:3001/api/all-instances');
+                const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.allInstances}`);
                 if (response.ok) {
-                    const allInstances = await response.json();
+                    const responseData = await response.json();
+                    
+                    // Handle standardized response format
+                    const allInstances = responseData.data ? responseData.data.instances : responseData;
+                    const partialErrors = responseData.data?.partialErrors || [];
+                    
                     console.log(`📊 Fetched ${allInstances.length} instances from enhanced backend`);
+                    if (partialErrors.length > 0) {
+                        console.warn('⚠️ Some providers had errors:', partialErrors);
+                    }
                     
                     // Position instances in a grid layout
                     allInstances.forEach((instance, index) => {
@@ -160,7 +225,7 @@ async function initializeVisualization() {
                 // Try to fetch GCP data
                 let gcpNodes = [];
                 try {
-                    const response = await fetch('http://localhost:3001/api/gcp-instance');
+                    const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.gcpInstance}`);
                     if (response.ok) {
                         const gcpData = await response.json();
                         const gcpNode = {
@@ -234,7 +299,7 @@ async function initializeVisualization() {
         hideLoadingIndicator();
         
     } catch (error) {
-        console.error('Error initializing visualization:', error);
+        FrontendErrorHandler.logError('initialize-visualization', error);
         hideLoadingIndicator();
         
         // Show error and fall back to sample data
@@ -316,8 +381,8 @@ function showErrorMessage(message) {
     `;
     container.appendChild(errorDiv);
     
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
+    // Auto-remove after 5 seconds with tracked timeout
+    addTrackedGlobalTimeout(() => {
         if (errorDiv) errorDiv.remove();
     }, 5000);
 }
@@ -345,8 +410,8 @@ function showSuccessMessage(message) {
     `;
     container.appendChild(successDiv);
     
-    // Auto-remove after 3 seconds
-    setTimeout(() => {
+    // Auto-remove after 3 seconds with tracked timeout
+    addTrackedGlobalTimeout(() => {
         if (successDiv) successDiv.remove();
     }, 3000);
 }
@@ -698,7 +763,7 @@ async function addInstanceHandler() {
             document.getElementById('instance-description').value = '';
             
             // Refresh the visualization
-            setTimeout(() => {
+            addTrackedGlobalTimeout(() => {
                 refreshVisualization();
             }, 1000);
         } else {
@@ -713,14 +778,15 @@ async function discoverInstancesHandler() {
     showAdminStatus('🔍 Discovering AWS instances...', 'info');
     
     try {
-        const response = await fetch('http://localhost:3001/api/discover-instances', {
+        const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.discoverInstances}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enableAutoDiscovery: true })
         });
         
         if (!response.ok) {
-            throw new Error(`Discovery failed: ${response.status}`);
+            const errorMessage = await FrontendErrorHandler.handleFetchError('discover-instances', response);
+            throw new Error(errorMessage);
         }
         
         const result = await response.json();
@@ -732,7 +798,7 @@ async function discoverInstancesHandler() {
             );
             
             // Refresh the visualization to show newly discovered instances
-            setTimeout(() => {
+            addTrackedGlobalTimeout(() => {
                 initializeVisualization();
             }, 1000);
         } else {
@@ -740,9 +806,23 @@ async function discoverInstancesHandler() {
         }
         
     } catch (error) {
-        console.error('Auto-discovery error:', error);
-        showAdminStatus(`❌ Discovery failed: ${error.message}`, 'error');
+        FrontendErrorHandler.logError('discover-instances', error);
+        FrontendErrorHandler.showUserError(`❌ Discovery failed: ${error.message}`, 'error');
     }
+}
+
+// Global timeout tracking for cleanup
+const globalTimeouts = [];
+
+function addTrackedGlobalTimeout(callback, delay) {
+    const timeoutId = setTimeout(callback, delay);
+    globalTimeouts.push(timeoutId);
+    return timeoutId;
+}
+
+function clearAllGlobalTimeouts() {
+    globalTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    globalTimeouts.length = 0;
 }
 
 function showAdminStatus(message, type) {
@@ -752,7 +832,7 @@ function showAdminStatus(message, type) {
     
     // Auto-clear after 5 seconds for success messages
     if (type === 'success') {
-        setTimeout(() => {
+        addTrackedGlobalTimeout(() => {
             statusDiv.textContent = '';
             statusDiv.className = 'admin-status';
         }, 5000);
@@ -791,9 +871,10 @@ function hideDiscoveryConfigPanel() {
 
 async function refreshDiscoveryStatus() {
     try {
-        const response = await fetch('http://localhost:3001/api/auto-discovery/status');
+        const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.autoDiscoveryStatus}`);
         if (!response.ok) {
-            throw new Error(`Status check failed: ${response.status}`);
+            const errorMessage = await FrontendErrorHandler.handleFetchError('refresh-discovery-status', response);
+            throw new Error(errorMessage);
         }
         
         const status = await response.json();
@@ -818,8 +899,8 @@ async function refreshDiscoveryStatus() {
         });
         
     } catch (error) {
-        console.error('Failed to refresh discovery status:', error);
-        showAdminStatus(`❌ Failed to load discovery status: ${error.message}`, 'error');
+        FrontendErrorHandler.logError('refresh-discovery-status', error);
+        FrontendErrorHandler.showUserError(`❌ Failed to load discovery status: ${error.message}`, 'error');
     }
 }
 
@@ -835,27 +916,28 @@ async function saveDiscoveryConfig() {
         
         showAdminStatus('💾 Saving discovery configuration...', 'info');
         
-        const response = await fetch('http://localhost:3001/api/auto-discovery/toggle', {
+        const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.autoDiscoveryToggle}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled, filters })
         });
         
         if (!response.ok) {
-            throw new Error(`Save failed: ${response.status}`);
+            const errorMessage = await FrontendErrorHandler.handleFetchError('save-discovery-config', response);
+            throw new Error(errorMessage);
         }
         
         const result = await response.json();
         showAdminStatus(`✅ ${result.message}`, 'success');
         
         // Refresh status display
-        setTimeout(() => {
+        addTrackedGlobalTimeout(() => {
             refreshDiscoveryStatus();
         }, 500);
         
     } catch (error) {
-        console.error('Failed to save discovery config:', error);
-        showAdminStatus(`❌ Failed to save configuration: ${error.message}`, 'error');
+        FrontendErrorHandler.logError('save-discovery-config', error);
+        FrontendErrorHandler.showUserError(`❌ Failed to save configuration: ${error.message}`, 'error');
     }
 }
 
@@ -867,13 +949,16 @@ class NodeSelectionManager {
         this.filterProvider = 'all';
         this.filterStatus = 'all';
         this.searchQuery = '';
+        this.eventListeners = []; // Track event listeners for cleanup
+        this.timeouts = []; // Track timeouts for cleanup
     }
 
     async loadInstanceLibrary() {
         try {
-            const response = await fetch('http://localhost:3001/api/instance-library');
+            const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibrary}`);
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const errorMessage = await FrontendErrorHandler.handleFetchError('load-instance-library', response);
+                throw new Error(errorMessage);
             }
             
             const library = await response.json();
@@ -881,14 +966,14 @@ class NodeSelectionManager {
             console.log('📚 Loaded instance library:', library.summary);
             return library;
         } catch (error) {
-            console.error('❌ Failed to load instance library:', error);
+            FrontendErrorHandler.logError('load-instance-library', error);
             throw error;
         }
     }
 
     async toggleInstanceVisibility(provider, instanceId, visible) {
         try {
-            const response = await fetch('http://localhost:3001/api/instance-library/toggle-visibility', {
+            const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibraryToggleVisibility}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ provider, instanceId, visible })
@@ -914,7 +999,7 @@ class NodeSelectionManager {
 
     async bulkToggleVisibility(instances, visible) {
         try {
-            const response = await fetch('http://localhost:3001/api/instance-library/bulk-toggle', {
+            const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibraryBulkToggle}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ instances, visible })
@@ -1074,46 +1159,97 @@ class NodeSelectionManager {
         return badges[provider] || `<span class="provider-badge">${provider}</span>`;
     }
 
+    // Clean up existing event listeners before adding new ones
+    cleanupEventListeners() {
+        this.eventListeners.forEach(({ element, event, handler }) => {
+            element.removeEventListener(event, handler);
+        });
+        this.eventListeners = [];
+        
+        // Clear any pending timeouts
+        this.timeouts.forEach(timeoutId => clearTimeout(timeoutId));
+        this.timeouts = [];
+    }
+
+    // Helper method to track event listeners
+    addTrackedEventListener(element, event, handler) {
+        element.addEventListener(event, handler);
+        this.eventListeners.push({ element, event, handler });
+    }
+
+    // Helper method to track timeouts
+    addTrackedTimeout(callback, delay) {
+        const timeoutId = setTimeout(callback, delay);
+        this.timeouts.push(timeoutId);
+        return timeoutId;
+    }
+
     attachEventListeners() {
+        // Clean up existing listeners first to prevent memory leaks
+        this.cleanupEventListeners();
+
         // Filter listeners
-        document.getElementById('provider-filter').addEventListener('change', (e) => {
-            this.filterProvider = e.target.value;
-            this.renderSelectionPanel();
-        });
+        const providerFilter = document.getElementById('provider-filter');
+        const statusFilter = document.getElementById('status-filter');
+        const searchInput = document.getElementById('search-instances');
+        
+        if (providerFilter) {
+            this.addTrackedEventListener(providerFilter, 'change', (e) => {
+                this.filterProvider = e.target.value;
+                this.renderSelectionPanel();
+            });
+        }
 
-        document.getElementById('status-filter').addEventListener('change', (e) => {
-            this.filterStatus = e.target.value;
-            this.renderSelectionPanel();
-        });
+        if (statusFilter) {
+            this.addTrackedEventListener(statusFilter, 'change', (e) => {
+                this.filterStatus = e.target.value;
+                this.renderSelectionPanel();
+            });
+        }
 
-        document.getElementById('search-instances').addEventListener('input', (e) => {
-            this.searchQuery = e.target.value;
-            this.renderSelectionPanel();
-        });
+        if (searchInput) {
+            this.addTrackedEventListener(searchInput, 'input', (e) => {
+                this.searchQuery = e.target.value;
+                this.renderSelectionPanel();
+            });
+        }
 
         // Bulk action listeners
-        document.getElementById('select-all-btn').addEventListener('click', () => {
-            const filteredInstances = this.getFilteredInstances();
-            filteredInstances.forEach(instance => this.selectedInstances.add(instance.configId));
-            this.renderSelectionPanel();
-        });
+        const selectAllBtn = document.getElementById('select-all-btn');
+        const selectNoneBtn = document.getElementById('select-none-btn');
+        const showSelectedBtn = document.getElementById('show-selected-btn');
+        const hideSelectedBtn = document.getElementById('hide-selected-btn');
 
-        document.getElementById('select-none-btn').addEventListener('click', () => {
-            this.selectedInstances.clear();
-            this.renderSelectionPanel();
-        });
+        if (selectAllBtn) {
+            this.addTrackedEventListener(selectAllBtn, 'click', () => {
+                const filteredInstances = this.getFilteredInstances();
+                filteredInstances.forEach(instance => this.selectedInstances.add(instance.configId));
+                this.renderSelectionPanel();
+            });
+        }
 
-        document.getElementById('show-selected-btn').addEventListener('click', () => {
-            this.bulkToggleSelected(true);
-        });
+        if (selectNoneBtn) {
+            this.addTrackedEventListener(selectNoneBtn, 'click', () => {
+                this.selectedInstances.clear();
+                this.renderSelectionPanel();
+            });
+        }
 
-        document.getElementById('hide-selected-btn').addEventListener('click', () => {
-            this.bulkToggleSelected(false);
-        });
+        if (showSelectedBtn) {
+            this.addTrackedEventListener(showSelectedBtn, 'click', () => {
+                this.bulkToggleSelected(true);
+            });
+        }
+
+        if (hideSelectedBtn) {
+            this.addTrackedEventListener(hideSelectedBtn, 'click', () => {
+                this.bulkToggleSelected(false);
+            });
+        }
 
         // Individual checkbox listeners
         document.querySelectorAll('.instance-select').forEach(checkbox => {
-            checkbox.addEventListener('change', (e) => {
+            this.addTrackedEventListener(checkbox, 'change', (e) => {
                 const instanceItem = e.target.closest('.instance-item');
                 const instanceId = instanceItem.dataset.instanceId;
                 
@@ -1138,25 +1274,20 @@ class NodeSelectionManager {
             if (instance) {
                 instances.push({
                     provider: instance.cloudProvider.toLowerCase(),
-                    instanceId: instance.configId
+                    instanceId,
+                    visible
                 });
             }
         });
 
         try {
-            showAdminStatus(`🔄 ${visible ? 'Showing' : 'Hiding'} ${instances.length} instances...`, 'info');
+            showAdminStatus(`🔄 Updating visibility for ${instances.length} instances...`, 'info');
             await this.bulkToggleVisibility(instances, visible);
             
-            this.selectedInstances.clear();
-            showAdminStatus(`✅ ${visible ? 'Showed' : 'Hid'} ${instances.length} instances`, 'success');
-            
-            // Refresh the main visualization
-            setTimeout(() => {
-                initializeVisualization();
-            }, 1000);
-            
+            showAdminStatus(`✅ Successfully updated visibility for ${instances.length} instances`, 'success');
         } catch (error) {
-            showAdminStatus(`❌ Failed to update instances: ${error.message}`, 'error');
+            FrontendErrorHandler.logError('bulk-toggle-visibility', error);
+            FrontendErrorHandler.showUserError(`❌ Failed to update visibility: ${error.message}`, 'error');
         }
     }
 }
@@ -1167,18 +1298,55 @@ const nodeSelectionManager = new NodeSelectionManager();
 // Function to show/hide the node selection panel
 async function toggleNodeSelectionPanel() {
     const panel = document.getElementById('node-selection-panel');
-    
-    if (panel.style.display === 'none' || !panel.style.display) {
-        try {
-            showAdminStatus('📚 Loading instance library...', 'info');
-            await nodeSelectionManager.loadInstanceLibrary();
-            nodeSelectionManager.renderSelectionPanel();
-            panel.style.display = 'block';
-            showAdminStatus('✅ Instance library loaded', 'success');
-        } catch (error) {
-            showAdminStatus(`❌ Failed to load instances: ${error.message}`, 'error');
-        }
+    if (!panel) {
+        await createNodeSelectionPanel();
     } else {
-        panel.style.display = 'none';
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
     }
 }
+
+// Comprehensive application cleanup function
+function cleanupApplication() {
+    console.log('Cleaning up application resources...');
+    
+    try {
+        // Clear all global timeouts
+        clearAllGlobalTimeouts();
+        
+        // Cleanup NodeSelectionManager if it exists
+        if (window.nodeSelectionManager) {
+            window.nodeSelectionManager.cleanupEventListeners();
+        }
+        
+        // Clear any intervals if they exist
+        if (window.discoveryStatusInterval) {
+            clearInterval(window.discoveryStatusInterval);
+        }
+        
+        // Clear any other global resources
+        // (Add more cleanup as needed)
+        
+        console.log('Application cleanup completed');
+    } catch (error) {
+        console.error('Error during application cleanup:', error);
+    }
+}
+
+// Initialize the application
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing...');
+    initializeVisualization();
+});
+
+// Add cleanup handlers for page unload
+window.addEventListener('beforeunload', cleanupApplication);
+window.addEventListener('unload', cleanupApplication);
+
+// For additional safety, cleanup on page visibility change (when user switches tabs)
+document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+        // Optional: Clean up when page becomes hidden (user switches tabs)
+        // This is more aggressive cleanup - uncomment if needed
+        // cleanupApplication();
+    }
+});

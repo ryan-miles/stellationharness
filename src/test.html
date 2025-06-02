@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page</title>
+</head>
+<body>
+    <h1>Test Page - Server Working!</h1>
+    <p>If you see this, the frontend server is working.</p>
+    <script>
+        console.log('Test script loaded');
+        fetch('http://localhost:3001/api/all-instances')
+            .then(response => response.json())
+            .then(data => {
+                console.log('API Response:', data);
+                document.body.innerHTML += '<h2>API Test Success!</h2><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            })
+            .catch(error => {
+                console.error('API Error:', error);
+                document.body.innerHTML += '<h2>API Error: ' + error.message + '</h2>';
+            });
+    </script>
+</body>
+</html>

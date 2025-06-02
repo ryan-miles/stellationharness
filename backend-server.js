@@ -3,15 +3,170 @@ const cors = require('cors');
 const AWS = require('aws-sdk');
 const fs = require('fs').promises;
 const path = require('path');
-const { GCPService } = require('./gcp-integration');
-const { AzureService } = require('./azure-integration');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
+// Import services
+const { GCPService } = require('./gcp-integration.js');
+const { AzureService } = require('./azure-integration.js');
+
+// Import security modules
+const inputValidator = require('./security/input-validation.js');
+const authManager = require('./security/auth-manager.js');
+const configManager = require('./security/config-manager.js');
+
+// **STANDARDIZED ERROR HANDLING UTILITIES**
+const ErrorHandler = {
+    // Standard error response format
+    createErrorResponse(operation, error, statusCode = 500) {
+        return {
+            success: false,
+            operation,
+            error: error.message || 'Unknown error occurred',
+            details: error.code || error.name || 'ErrorWithoutCode',
+            timestamp: new Date().toISOString()
+        };
+    },
+
+    // Standard success response format
+    createSuccessResponse(operation, data, message = null) {
+        return {
+            success: true,
+            operation,
+            data,
+            message: message || `${operation} completed successfully`,
+            timestamp: new Date().toISOString()
+        };
+    },
+
+    // Standard error logging
+    logError(operation, error, context = {}) {
+        console.error(`❌ [${operation}] Error:`, {
+            message: error.message,
+            code: error.code || 'NO_CODE',
+            context,
+            timestamp: new Date().toISOString()
+        });
+    },
+
+    // Handle API endpoint errors consistently
+    handleEndpointError(res, operation, error, statusCode = 500) {
+        this.logError(operation, error);
+        const errorResponse = this.createErrorResponse(operation, error, statusCode);
+        return res.status(statusCode).json(errorResponse);    }
+};
+
+// **SECURITY INITIALIZATION**
+// Security instances are already imported and ready to use
+
+// Security middleware
+const authenticateRequest = async (req, res, next) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '') || req.headers['x-api-key'];
+        
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required',
+                message: 'API key or token must be provided'
+            });
+        }
+
+        const authResult = await authManager.authenticateApiKey(token);
+        if (!authResult.valid) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid authentication',
+                message: authResult.error || 'Invalid API key or token'
+            });
+        }
+
+        req.user = authResult.user;
+        req.permissions = authResult.permissions;
+        next();
+    } catch (error) {
+        console.error('Authentication error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Authentication service error'
+        });
+    }
+};
+
+// Authorization middleware
+const requirePermission = (permission) => {
+    return (req, res, next) => {
+        if (!req.permissions || !req.permissions.includes(permission)) {
+            return res.status(403).json({
+                success: false,
+                error: 'Insufficient permissions',
+                message: `Required permission: ${permission}`
+            });
+        }
+        next();
+    };
+};
+
+// Rate limiting
+const createRateLimit = (windowMs, max, message) => {
+    return rateLimit({
+        windowMs,
+        max,
+        message: {
+            success: false,
+            error: 'Rate limit exceeded',
+            message
+        },
+        standardHeaders: true,
+        legacyHeaders: false
+    });
+};
 
 const app = express();
 const port = 3001;
 
+// **SECURITY MIDDLEWARE CONFIGURATION**
+// Security headers
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'"],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"]
+        }
+    },
+    crossOriginEmbedderPolicy: false
+}));
+
+// Rate limiting for different endpoint types
+const generalRateLimit = createRateLimit(15 * 60 * 1000, 100, 'Too many requests, please try again later');
+const apiRateLimit = createRateLimit(15 * 60 * 1000, 200, 'Too many API requests, please try again later');
+const authRateLimit = createRateLimit(15 * 60 * 1000, 20, 'Too many authentication attempts, please try again later');
+
+// Apply rate limiting
+app.use('/api/auth', authRateLimit);
+app.use('/api', apiRateLimit);
+app.use(generalRateLimit);
+
 // Enable CORS for frontend communication
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000', 'http://localhost:8080'],
+    credentials: true
+}));
+
+app.use(express.json({ limit: '10mb' }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - IP: ${req.ip}`);
+    next();
+});
 
 // Configure AWS SDK (uses default credential chain)
 AWS.config.update({ region: 'us-east-1' });
@@ -22,6 +177,9 @@ const gcpService = new GCPService();
 
 // Initialize Azure service
 const azureService = new AzureService();
+
+// **SECURITY INITIALIZATION**
+// Security instances are already declared above
 
 // Configuration management
 const CONFIG_FILE = path.join(__dirname, 'instances-config.json');
@@ -64,12 +222,97 @@ function getDefaultConfig() {
                     monitoringEnabled: true
                 }
             ]
-        }
-    };
+        }    };
 }
 
+// **AUTHENTICATION AND SECURITY ENDPOINTS**
+
+// Health check endpoint (public, no auth required)
+app.get('/api/health', (req, res) => {
+    res.json({
+        success: true,
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0'
+    });
+});
+
+// Authentication endpoint
+app.post('/api/auth/login', authRateLimit, async (req, res) => {
+    try {
+        const { apiKey } = req.body;
+        
+        // Validate input
+        const validation = inputValidator.validateApiKey(apiKey);
+        if (!validation.isValid) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid API key format',
+                details: validation.errors
+            });
+        }
+
+        const authResult = await authManager.authenticateApiKey(apiKey);
+        if (!authResult.valid) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication failed',
+                message: 'Invalid API key'
+            });
+        }
+
+        // Generate JWT token
+        const token = await authManager.generateJWT(authResult.user);
+        
+        res.json({
+            success: true,
+            token,
+            user: {
+                id: authResult.user.id,
+                role: authResult.user.role,
+                permissions: authResult.permissions
+            },
+            expiresIn: '24h'
+        });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Authentication service error'
+        });
+    }
+});
+
+// Token validation endpoint
+app.post('/api/auth/validate', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        
+        if (!token) {
+            return res.status(400).json({
+                success: false,
+                error: 'Token required'
+            });
+        }
+
+        const isValid = await authManager.validateJWT(token);
+        res.json({
+            success: true,
+            valid: isValid
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Token validation error'
+        });
+    }
+});
+
+// **PROTECTED API ENDPOINTS** (All endpoints below require authentication)
+
 // API endpoint to fetch ALL configured EC2 instances
-app.get('/api/ec2-instances', async (req, res) => {
+app.get('/api/ec2-instances', authenticateRequest, requirePermission('read:instances'), async (req, res) => {
+    const operation = 'fetch-ec2-instances';
     try {
         console.log('Fetching all configured EC2 instances...');
         
@@ -90,8 +333,11 @@ app.get('/api/ec2-instances', async (req, res) => {
                     instances.push(nodeData);
                     console.log(`✅ Fetched: ${nodeData.title} (${instanceConfig.id})`);
                 }
-            } catch (error) {
-                console.error(`❌ Failed to fetch ${instanceConfig.id}:`, error.message);
+            } catch (instanceError) {
+                ErrorHandler.logError('fetch-single-ec2-instance', instanceError, { 
+                    instanceId: instanceConfig.id,
+                    alias: instanceConfig.alias 
+                });
             }
         }
         
@@ -101,25 +347,22 @@ app.get('/api/ec2-instances', async (req, res) => {
                 const discoveredInstances = await discoverEC2Instances(awsConfig.autoDiscovery.filters);
                 instances.push(...discoveredInstances);
                 console.log(`🔍 Auto-discovered ${discoveredInstances.length} additional instances`);
-            } catch (error) {
-                console.error('Auto-discovery failed:', error.message);
+            } catch (discoveryError) {
+                ErrorHandler.logError('auto-discovery', discoveryError);
             }
         }
         
         console.log(`📊 Returning ${instances.length} EC2 instances`);
-        res.json(instances);
+        const response = ErrorHandler.createSuccessResponse(operation, instances);
+        res.json(response);
         
     } catch (error) {
-        console.error('Error fetching EC2 instances:', error);
-        res.status(500).json({ 
-            error: 'Failed to fetch instances',
-            message: error.message 
-        });
+        return ErrorHandler.handleEndpointError(res, operation, error);
     }
 });
 
 // API endpoint to fetch a single EC2 instance (backward compatibility)
-app.get('/api/ec2-instance', async (req, res) => {
+app.get('/api/ec2-instance', authenticateRequest, requirePermission('read:instances'), async (req, res) => {
     try {
         console.log('Fetching primary EC2 instance...');
         
@@ -215,7 +458,7 @@ async function discoverAzureVMs(filters = {}) {
 }
 
 // API endpoint to get instance status
-app.get('/api/ec2-instance/status', async (req, res) => {
+app.get('/api/ec2-instance/status', authenticateRequest, requirePermission('read:instances'), async (req, res) => {
     try {
         const awsConfig = instancesConfig.aws || {};
         const primaryInstance = awsConfig.instances?.[0];
@@ -249,16 +492,36 @@ app.get('/api/ec2-instance/status', async (req, res) => {
 });
 
 // Configuration management endpoints
-app.get('/api/config', (req, res) => {
+app.get('/api/config', authenticateRequest, requirePermission('read:config'), (req, res) => {
     res.json(instancesConfig);
 });
 
-app.post('/api/config/aws/add-instance', async (req, res) => {
+app.post('/api/config/aws/add-instance', authenticateRequest, requirePermission('write:config'), async (req, res) => {
     try {
         const { instanceId, alias, description } = req.body;
         
-        if (!instanceId) {
-            return res.status(400).json({ error: 'Instance ID is required' });
+        // Validate input using our security module
+        const validation = inputValidator.validateAWSInstanceId(instanceId);
+        if (!validation.isValid) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid instance ID format',
+                details: validation.errors
+            });
+        }
+
+        if (alias && !inputValidator.validateString(alias, 1, 50)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid alias - must be 1-50 characters'
+            });
+        }
+
+        if (description && !inputValidator.validateString(description, 0, 200)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid description - must be 0-200 characters'
+            });
         }
         
         // Verify the instance exists
@@ -310,7 +573,7 @@ app.post('/api/config/aws/add-instance', async (req, res) => {
     }
 });
 
-app.delete('/api/config/aws/remove-instance/:instanceId', async (req, res) => {
+app.delete('/api/config/aws/remove-instance/:instanceId', authenticateRequest, requirePermission('write:config'), async (req, res) => {
     try {
         const { instanceId } = req.params;
         
@@ -341,7 +604,7 @@ app.delete('/api/config/aws/remove-instance/:instanceId', async (req, res) => {
 });
 
 // GCP API endpoint to fetch specific instance - now using real gcpapp01
-app.get('/api/gcp-instance/:instanceName', async (req, res) => {
+app.get('/api/gcp-instance/:instanceName', authenticateRequest, requirePermission('read:instances'), async (req, res) => {
     try {
         console.log(`📡 Fetching real GCP instance...`);
         
@@ -365,7 +628,7 @@ app.get('/api/gcp-instance/:instanceName', async (req, res) => {
 });
 
 // GCP API endpoint with default instance name
-app.get('/api/gcp-instance', async (req, res) => {
+app.get('/api/gcp-instance', authenticateRequest, requirePermission('read:instances'), async (req, res) => {
     try {
         console.log(`📡 Fetching default GCP instance (finance-is)...`);
         
@@ -388,40 +651,60 @@ app.get('/api/gcp-instance', async (req, res) => {
 });
 
 // Combined endpoint for all cloud instances
-app.get('/api/all-instances', async (req, res) => {
+app.get('/api/all-instances', authenticateRequest, requirePermission('read:instances'), async (req, res) => {
+    const operation = 'fetch-all-instances';
     try {
         const instances = [];
-          // Fetch AWS instances
+        const errors = [];
+        
+        // Fetch AWS instances
         try {
             const awsInstances = await fetchAWSInstances();
             instances.push(...awsInstances);
+            console.log(`✅ AWS: Fetched ${awsInstances.length} instances`);
         } catch (awsError) {
-            console.error('AWS fetch failed:', awsError.message);
+            ErrorHandler.logError('fetch-aws-instances', awsError, { provider: 'AWS' });
+            errors.push({ provider: 'AWS', error: awsError.message });
         }
         
         // Fetch GCP instances
         try {
             const gcpInstances = await fetchGCPInstances();
             instances.push(...gcpInstances);
+            console.log(`✅ GCP: Fetched ${gcpInstances.length} instances`);
         } catch (gcpError) {
-            console.error('GCP fetch failed:', gcpError.message);
+            ErrorHandler.logError('fetch-gcp-instances', gcpError, { provider: 'GCP' });
+            errors.push({ provider: 'GCP', error: gcpError.message });
         }
-          // Fetch Azure instances (disabled - no live Azure resources currently)
-        // try {
-        //     const azureInstances = await fetchAzureInstances();
-        //     instances.push(...azureInstances);
-        // } catch (azureError) {
-        //     console.error('Azure fetch failed:', azureError.message);
-        // }
         
-        res.json(instances);
+        // Fetch Azure instances
+        try {
+            const azureInstances = await fetchAzureInstances();
+            instances.push(...azureInstances);
+            console.log(`✅ Azure: Fetched ${azureInstances.length} instances`);
+        } catch (azureError) {
+            ErrorHandler.logError('fetch-azure-instances', azureError, { provider: 'Azure' });
+            errors.push({ provider: 'Azure', error: azureError.message });
+        }
+        
+        // Return response with instances and any partial errors
+        const response = ErrorHandler.createSuccessResponse(operation, {
+            instances,
+            partialErrors: errors,
+            summary: {
+                total: instances.length,
+                providers: {
+                    aws: instances.filter(i => i.cloudProvider === 'AWS').length,
+                    gcp: instances.filter(i => i.cloudProvider === 'GCP').length,
+                    azure: instances.filter(i => i.cloudProvider === 'Azure').length
+                }
+            }
+        });
+        
+        res.json(response);
         
     } catch (error) {
-        console.error('Error fetching instances:', error);
-        res.status(500).json({ 
-            error: 'Failed to fetch instances',
-            message: error.message 
-        });
+        return ErrorHandler.handleEndpointError(res, operation, error);
     }
 });
 
@@ -585,7 +868,7 @@ function convertInstanceToNode(ec2Instance, config = {}) {
 }
 
 // Manual auto-discovery trigger endpoint
-app.post('/api/discover-instances', async (req, res) => {
+app.post('/api/discover-instances', authenticateRequest, requirePermission('write:config'), async (req, res) => {
     try {
         console.log('🔍 Manual instance discovery triggered');
         
@@ -683,7 +966,7 @@ app.post('/api/discover-instances', async (req, res) => {
 });
 
 // Auto-discovery configuration endpoints
-app.get('/api/auto-discovery/status', (req, res) => {
+app.get('/api/auto-discovery/status', authenticateRequest, requirePermission('read:config'), (req, res) => {
     const awsConfig = instancesConfig.aws || {};
     const autoDiscovery = awsConfig.autoDiscovery || { enabled: false };
     
@@ -695,7 +978,7 @@ app.get('/api/auto-discovery/status', (req, res) => {
     });
 });
 
-app.post('/api/auto-discovery/toggle', async (req, res) => {
+app.post('/api/auto-discovery/toggle', authenticateRequest, requirePermission('write:config'), async (req, res) => {
     try {
         const { enabled, filters } = req.body;
         
@@ -729,7 +1012,7 @@ app.post('/api/auto-discovery/toggle', async (req, res) => {
 });
 
 // Node visibility management endpoints
-app.get('/api/instance-library', async (req, res) => {
+app.get('/api/instance-library', authenticateRequest, requirePermission('read:instances'), async (req, res) => {
     try {
         console.log('🔍 Fetching complete instance library...');
         
@@ -826,7 +1109,7 @@ app.get('/api/instance-library', async (req, res) => {
     }
 });
 
-app.post('/api/instance-library/toggle-visibility', async (req, res) => {
+app.post('/api/instance-library/toggle-visibility', authenticateRequest, requirePermission('write:config'), async (req, res) => {
     try {
         const { provider, instanceId, visible } = req.body;
         
@@ -893,7 +1176,7 @@ app.post('/api/instance-library/toggle-visibility', async (req, res) => {
     }
 });
 
-app.post('/api/instance-library/bulk-toggle', async (req, res) => {
+app.post('/api/instance-library/bulk-toggle', authenticateRequest, requirePermission('write:config'), async (req, res) => {
     try {
         const { instances, visible } = req.body;
         
@@ -956,7 +1239,7 @@ app.post('/api/instance-library/bulk-toggle', async (req, res) => {
 });
 
 // Update existing all-instances endpoint to respect visibility settings
-app.get('/api/all-instances', async (req, res) => {
+app.get('/api/all-instances', authenticateRequest, requirePermission('read:instances'), async (req, res) => {
     try {
         const instances = [];
         
@@ -973,15 +1256,14 @@ app.get('/api/all-instances', async (req, res) => {
             const gcpInstances = await fetchGCPInstances();
             instances.push(...gcpInstances);
         } catch (gcpError) {
-            console.error('GCP fetch failed:', gcpError.message);
+            console.error('GCP fetch failed:', gcpError.message);        }
+          // Fetch Azure instances
+        try {
+            const azureInstances = await fetchAzureInstances();
+            instances.push(...azureInstances);
+        } catch (azureError) {
+            console.error('Azure fetch failed:', azureError.message);
         }
-          // Fetch Azure instances (disabled - no live Azure resources currently)
-        // try {
-        //     const azureInstances = await fetchAzureInstances();
-        //     instances.push(...azureInstances);
-        // } catch (azureError) {
-        //     console.error('Azure fetch failed:', azureError.message);
-        // }
         
         // Filter instances based on visibility
         const visibleInstances = instances.filter(i => i.isVisible !== false);
@@ -996,104 +1278,6 @@ app.get('/api/all-instances', async (req, res) => {
         });
     }
 });
-
-async function fetchAWSInstances() {
-    const instances = [];
-    const awsConfig = instancesConfig.aws || {};
-    
-    for (const instanceConfig of awsConfig.instances || []) {
-        if (!instanceConfig.monitoringEnabled) continue;
-        
-        try {
-            const params = { InstanceIds: [instanceConfig.id] };
-            const data = await ec2.describeInstances(params).promise();
-            const awsInstance = data.Reservations[0]?.Instances[0];
-            
-            if (awsInstance) {
-                instances.push({
-                    ...convertInstanceToNode(awsInstance, instanceConfig),
-                    cloudProvider: 'AWS',
-                    dataSource: 'AWS API'
-                });
-            }
-        } catch (error) {
-            console.error(`Failed to fetch AWS instance ${instanceConfig.id}:`, error.message);
-        }
-    }
-    
-    return instances;
-}
-
-async function fetchGCPInstances() {
-    const instances = [];
-    const gcpConfig = instancesConfig.gcp || {};
-    
-    for (const instanceConfig of gcpConfig.instances || []) {
-        if (!instanceConfig.monitoringEnabled) continue;
-        
-        try {
-            const gcpData = await gcpService.getInstanceDetails(
-                instanceConfig.name, 
-                instanceConfig.zone, 
-                gcpConfig.project
-            );
-            
-            instances.push({
-                ...gcpService.convertToNodeFormat(gcpData),
-                cloudProvider: 'GCP',
-                dataSource: 'GCP API/Cache'
-            });
-        } catch (error) {
-            console.error(`Failed to fetch GCP instance ${instanceConfig.name}:`, error.message);
-        }
-    }
-      return instances;
-}
-
-async function fetchAzureInstances() {
-    const instances = [];
-    const azureConfig = instancesConfig.azure || {};
-    
-    console.log('🔍 fetchAzureInstances: Starting Azure fetch...');
-    console.log('🔍 Azure config:', JSON.stringify(azureConfig, null, 2));
-    
-    // Initialize Azure service if needed
-    if (!azureService.initialized) {
-        console.log('🔧 Initializing Azure service...');
-        await azureService.initialize();
-    }
-    
-    for (const instanceConfig of azureConfig.instances || []) {
-        console.log('🔍 Processing Azure instance config:', instanceConfig);
-        if (!instanceConfig.monitoringEnabled) {
-            console.log('⚠️ Skipping disabled instance:', instanceConfig.name);
-            continue;
-        }
-        
-        try {
-            console.log('🔍 Fetching Azure VM:', instanceConfig.name);
-            const azureVM = await azureService.getVirtualMachine(
-                azureConfig.subscriptionId || 'demo-subscription',
-                azureConfig.resourceGroup || 'demo-resource-group', 
-                instanceConfig.name
-            );
-            
-            console.log('✅ Got Azure VM data:', azureVM.name);
-            const nodeData = azureService.convertVMToNodeData(azureVM, instanceConfig);
-            instances.push({
-                ...nodeData,
-                cloudProvider: 'Azure',
-                dataSource: 'Azure Demo'
-            });
-            console.log('✅ Added Azure instance to results:', nodeData.title);
-        } catch (error) {
-            console.error(`❌ Failed to fetch Azure instance ${instanceConfig.name}:`, error.message);
-        }
-    }
-    
-    console.log(`🔍 fetchAzureInstances: Returning ${instances.length} Azure instances`);
-    return instances;
-}
 
 // Save configuration to file
 async function saveConfig() {
@@ -1124,18 +1308,34 @@ app.get('/api/health', (req, res) => {
 
 // Initialize configuration and start server
 async function initializeServer() {
+    // Initialize security system
+    try {
+        console.log('🔐 Initializing security system...');
+        await authManager.initializeDefaultCredentials();
+        console.log('✅ Security system initialized');
+    } catch (error) {
+        console.error('❌ Failed to initialize security system:', error);
+        // Don't exit, continue with limited security
+        console.log('⚠️ Continuing with basic security...');
+    }
+
+    // Load application configuration
     await loadConfig();
     
     app.listen(port, () => {
         const awsConfig = instancesConfig.aws || {};
         const primaryInstance = awsConfig.instances?.[0];
-        
-        console.log(`🚀 Enhanced Multi-Cloud Backend API running on http://localhost:${port}`);
+          console.log(`🚀 Enhanced Multi-Cloud Backend API running on http://localhost:${port}`);
+        console.log(`🔐 Security: Enabled with JWT authentication and RBAC`);
         console.log(`📡 AWS Instances Configured: ${awsConfig.instances?.length || 0}`);
         console.log(`📡 GCP Instances Configured: ${instancesConfig.gcp?.instances?.length || 0}`);
         if (primaryInstance) {
             console.log(`🎯 Primary Instance: ${primaryInstance.alias} (${primaryInstance.id})`);
-        }        console.log(`🔍 Enhanced API endpoints:`);
+        }
+        console.log(`🔍 Secured API endpoints (Authentication Required):`);
+        console.log(`   POST /api/auth/login - Authenticate with API key`);
+        console.log(`   POST /api/auth/validate - Validate JWT token`);
+        console.log(`   GET /api/health - Health check (public)`);
         console.log(`   GET /api/ec2-instances - Fetch all configured EC2 instances`);
         console.log(`   GET /api/ec2-instance - Fetch primary instance (backward compatibility)`);
         console.log(`   GET /api/all-instances - Fetch all cloud instances`);
@@ -1143,7 +1343,7 @@ async function initializeServer() {
         console.log(`   DELETE /api/config/aws/remove-instance/:id - Remove instance`);
         console.log(`   POST /api/discover-instances - Manual auto-discovery trigger`);
         console.log(`   GET /api/config - View current configuration`);
-        console.log(`   GET /api/health - Health check`);
+        console.log(`🛡️ Security Features: Rate limiting, input validation, permission-based access`);
     });
 }
 

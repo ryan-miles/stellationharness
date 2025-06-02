@@ -1,28 +1,15 @@
 // AWS EC2 Integration Module
 console.log('aws-integration.js loaded');
 
-// Configuration
-const CONFIG = {
-    backend: {
-        url: 'http://localhost:3001',
-        endpoints: {
-            instances: '/api/ec2-instances',
-            allInstances: '/api/all-instances',
-            instance: '/api/ec2-instance',
-            status: '/api/ec2-instance/status',
-            health: '/api/health',
-            addInstance: '/api/config/aws/add-instance',
-            removeInstance: '/api/config/aws/remove-instance'
-        }
-    },
-    fallbackToMock: true
-};
+// Note: CONFIG is declared in main.js and available globally
+// Note: CloudService is expected to be available on window (loaded from cloud-utils.js)
 
 // Real AWS EC2 Service
-class EC2Service {
+class EC2Service extends window.CloudService {
     constructor() {
-        this.isInitialized = false;
-        this.backendAvailable = false;
+        super('AWS'); // Call parent constructor with provider name
+        // this.isInitialized = false; // Handled by CloudService
+        // this.backendAvailable = false; // Handled by CloudService
         this.mockData = null;
         this.realInstanceData = null;
         this.init();
@@ -31,6 +18,7 @@ class EC2Service {
     async init() {
         try {
             console.log('🔧 Initializing EC2 Service...');
+            // await super.init(); // Call CloudService init if it had any base logic - CloudService.init is abstract
             
             // First, try to connect to the backend
             await this.checkBackendHealth();
@@ -156,74 +144,13 @@ class EC2Service {
         ];
     }
 
-    async getInstances() {
-        if (!this.isInitialized) {
-            await this.init();
-        }
-        
-        if (this.backendAvailable) {
-            try {
-                const realInstance = await this.fetchRealEC2Instance();
-                // Return array with real instance plus mock data for comparison
-                const mockData = await this.generateMockEC2Data();
-                return [this.convertNodeToEC2Format(realInstance), ...mockData.slice(1)];
-            } catch (error) {
-                console.error('Failed to fetch real data, falling back to mock:', error);
-                return this.mockData || [];
-            }
-        }
-        
-        return this.mockData || [];
-    }
-
-    // Convert our node format back to EC2 format for compatibility
-    convertNodeToEC2Format(nodeData) {
-        if (!nodeData.metadata) return null;
-        
-        return {
-            InstanceId: nodeData.id,
-            InstanceType: nodeData.metadata.instanceType,
-            State: { Name: nodeData.metadata.state },
-            PublicIpAddress: nodeData.metadata.publicIp,
-            PrivateIpAddress: nodeData.metadata.privateIp,
-            PublicDnsName: nodeData.metadata.publicDns,
-            PrivateDnsName: nodeData.metadata.privateDns,
-            Tags: [
-                { Key: 'Name', Value: nodeData.title },
-                { Key: 'Environment', Value: nodeData.metadata.environment },
-                { Key: 'Application', Value: nodeData.metadata.application }
-            ],
-            LaunchTime: nodeData.metadata.launchTime,
-            Placement: { AvailabilityZone: nodeData.metadata.availabilityZone },
-            VpcId: nodeData.metadata.vpcId,
-            SubnetId: nodeData.metadata.subnetId,
-            SecurityGroups: nodeData.metadata.securityGroups ? 
-                nodeData.metadata.securityGroups.split(', ').map(name => ({ GroupName: name })) : []
-        };
-    }
-
     // Convert EC2 instance data to our node format
     convertToNodeFormat(ec2Instance) {
         const nameTag = ec2Instance.Tags?.find(tag => tag.Key === 'Name');
         const environmentTag = ec2Instance.Tags?.find(tag => tag.Key === 'Environment');
         
-        // Determine status based on instance state
-        let status = 'offline';
-        switch (ec2Instance.State.Name) {
-            case 'running':
-                status = 'online';
-                break;
-            case 'pending':
-            case 'stopping':
-            case 'rebooting':
-                status = 'warning';
-                break;
-            case 'stopped':
-            case 'terminated':
-            default:
-                status = 'offline';
-                break;
-        }
+        // Use centralized status mapping
+        const status = this.mapProviderStatusToStandard(ec2Instance.State?.Name);
 
         return {
             id: ec2Instance.InstanceId,
@@ -231,7 +158,7 @@ class EC2Service {
             title: nameTag?.Value || ec2Instance.InstanceId,
             hostname: nameTag?.Value || `instance-${ec2Instance.InstanceId.slice(-8)}`,
             ip: ec2Instance.PublicIpAddress || ec2Instance.PrivateIpAddress || 'No IP assigned',
-            status: status,
+            status: status, // Use mapped status
             position: { x: Math.random() * 600 + 100, y: Math.random() * 400 + 100 }, // Random initial position
             metadata: {
                 instanceType: ec2Instance.InstanceType,
@@ -293,39 +220,106 @@ class EC2Service {
     }
 
     // NEW: Fetch multiple EC2 instances using the new backend endpoint
-    async getMultipleInstancesFromEC2() {
+    async getMultipleInstancesFromEC2() { // This seems to be the primary method for fetching instances now
+        if (!this.isInitialized) await this.init();
+        if (!this.backendAvailable) {
+            console.log('⚠️ Backend not available, attempting to use fallback or mock data for AWS...');
+            const mockNodes = (await this.generateMockEC2Data()).map(instance => this.convertToNodeFormat(instance));
+            mockNodes.forEach(node => node.metadata.dataSource = 'Mock Data (Backend Unavailable)');
+            return mockNodes;
+        }
         try {
-            console.log('🔍 Fetching multiple EC2 instances...');
+            console.log('🔍 Fetching multiple EC2 instances via backend...');
             
-            if (this.backendAvailable) {
-                const response = await fetch(`${CONFIG.backend.url}/api/ec2-instances`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
-                const instances = await response.json();
-                console.log(`✅ Successfully fetched ${instances.length} EC2 instances`);
-                
-                // Add positioning for multiple instances
-                instances.forEach((instance, index) => {
-                    instance.position = { 
-                        x: 300 + (index * 300), // Space them out horizontally
-                        y: 200 + (index % 2) * 200 // Alternate rows for more instances
-                    };
-                });
-                
-                return instances;
-            } else {
-                console.log('⚠️ Backend not available, using fallback...');
-                return await this.getNodesFromEC2(); // Fallback to existing method
+            const response = await fetch(`${CONFIG.backend.url}/api/ec2-instances`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
+            const instances = await response.json(); 
+            console.log(`✅ Successfully fetched ${instances.length} EC2 instances from backend.`);
+            
+            instances.forEach((instance, index) => {
+                instance.position = instance.position || this.calculateNodePosition(index, instances.length);
+                if (instance.rawState && !instance.status) {
+                     instance.status = this.mapProviderStatusToStandard(instance.rawState);
+                }
+            });
+            
+            return instances;
+            
         } catch (error) {
-            console.error('❌ Error fetching multiple EC2 instances:', error);
-            // Fallback to single instance method
-            return await this.getNodesFromEC2();
+            console.error('❌ Error fetching multiple EC2 instances from backend:', error);
+            console.log('🔄 Falling back to mock data for AWS...');
+            const mockNodes = (await this.generateMockEC2Data()).map(instance => this.convertToNodeFormat(instance));
+            mockNodes.forEach(node => node.metadata.dataSource = 'Mock Data (Fetch Error)');
+            return mockNodes;
         }
+    }
+
+    // Overriding from CloudService
+    async getInstances(filters = {}) {
+        return this.getMultipleInstancesFromEC2(); 
+    }
+
+    async getInstanceDetails(instanceId, options = {}) {
+        if (!this.isInitialized) await this.init();
+        if (!this.backendAvailable) {
+            console.warn(`Backend not available, cannot fetch details for AWS instance ${instanceId}`);
+            const mockInstances = await this.generateMockEC2Data();
+            const mockInstanceRaw = mockInstances.find(i => i.InstanceId === instanceId);
+            return mockInstanceRaw ? this.convertToNodeFormat(mockInstanceRaw) : null;
+        }
+        try {
+            console.log(`📡 Fetching details for AWS instance ${instanceId} via backend...`);
+            // Assuming backend has an endpoint like /api/ec2-instance/:id 
+            // For AWS, CONFIG.backend.endpoints.instance seems to be for the *primary* instance, not any specific ID.
+            // This might need adjustment in backend or a new endpoint if not already present.
+            // Let's assume for now the frontend filters from the main list or this is a specific primary instance call.
+            let targetUrl = `${CONFIG.backend.url}${CONFIG.backend.endpoints.instance}`;
+            // If instanceId is provided and different from a known primary, this logic might need to change.
+            // For this example, we'll assume this endpoint can fetch by ID if one is appended, or it fetches the primary.
+            // This is a simplification; a dedicated /api/ec2-instance/:id would be better.
+            if (instanceId) { // Basic check, might need more robust handling
+                 // If your backend supports /api/ec2-instance/:id then use it.
+                 // targetUrl = `${CONFIG.backend.url}${CONFIG.backend.endpoints.instance}/${instanceId}`; 
+                 // For now, we stick to the defined endpoint, implying it might be the primary one or the frontend filters.
+                 console.warn('Fetching specific AWS instance by ID via frontend service; backend endpoint for specific ID is assumed or filtering is done client-side.');
+            }
+
+            const response = await fetch(targetUrl); 
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} fetching AWS instance ${instanceId || 'primary'}`);
+            }
+            const instanceData = await response.json(); 
+            if (instanceData.rawState && !instanceData.status) {
+                instanceData.status = this.mapProviderStatusToStandard(instanceData.rawState);
+            }
+            // If instanceId was provided, ensure the returned data matches
+            if (instanceId && instanceData.id !== instanceId) {
+                console.warn(`Fetched instance ID ${instanceData.id} does not match requested ID ${instanceId}. อาจเป็นข้อมูล instance หลัก`);
+                const allInstances = await this.getInstances();
+                const foundInstance = allInstances.find(inst => inst.id === instanceId);
+                return foundInstance || null;
+            }
+            return instanceData;
+        } catch (error) {
+            console.error(`❌ Error fetching details for AWS instance ${instanceId || 'primary'}:`, error);
+            const mockInstances = await this.generateMockEC2Data();
+            const mockInstanceRaw = mockInstances.find(i => i.InstanceId === instanceId);
+            if (mockInstanceRaw) {
+                const mockNode = this.convertToNodeFormat(mockInstanceRaw);
+                mockNode.metadata.dataSource = 'Mock Data (Detail Fetch Error)';
+                return mockNode;
+            }
+            return null;
+        }
+    }
+
+    // Overriding from CloudService
+    formatDataToNode(ec2Instance, config = {}) {
+        return this.convertToNodeFormat(ec2Instance);
     }
 
     // NEW: Add a new AWS instance to monitoring
@@ -357,32 +351,7 @@ class EC2Service {
         } catch (error) {
             console.error('❌ Error adding instance:', error);
             throw error;
-        }
-    }
-
-    // NEW: Remove an instance from monitoring
-    async removeInstance(instanceId) {
-        try {
-            console.log(`🗑️ Removing instance: ${instanceId}`);
-            
-            const response = await fetch(`${CONFIG.backend.url}/api/config/aws/remove-instance/${instanceId}`, {
-                method: 'DELETE'
-            });
-            
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || `HTTP ${response.status}`);
-            }
-            
-            const result = await response.json();
-            console.log('✅ Instance removed successfully');
-            return result;
-            
-        } catch (error) {
-            console.error('❌ Error removing instance:', error);
-            throw error;
-        }
-    }
+        }    }
 
     // NEW: Get current configuration
     async getConfiguration() {

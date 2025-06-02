@@ -57,55 +57,13 @@ function stopDrag() {
     document.removeEventListener('mouseup', stopDrag);
 }
 
-    function startDrag(e) {
-        draggedNode = e.currentTarget;
-        draggedNode.classList.add('dragging');
-
-        const rect = draggedNode.getBoundingClientRect();
-        const containerRect = document.getElementById('nodes-container').getBoundingClientRect();
-
-        dragOffset.x = e.clientX - (rect.left - containerRect.left);
-        dragOffset.y = e.clientY - (rect.top - containerRect.top);
-
-        document.addEventListener('mousemove', drag);
-        document.addEventListener('mouseup', stopDrag);
-
-        e.preventDefault();
+// Reset positions on page refresh
+window.addEventListener('beforeunload', function() {
+    // Clean up any active drag operations
+    if (draggedElement) {
+        draggedElement.classList.remove('dragging');
+        draggedElement = null;
     }
-
-    function drag(e) {
-        if (!draggedNode) return;
-
-        const containerRect = document.getElementById('nodes-container').getBoundingClientRect();
-
-        const newX = e.clientX - containerRect.left - dragOffset.x;
-        const newY = e.clientY - containerRect.top - dragOffset.y;
-
-        // Keep within bounds
-        const maxX = containerRect.width - draggedNode.offsetWidth;
-        const maxY = containerRect.height - draggedNode.offsetHeight;
-
-        const constrainedX = Math.max(0, Math.min(newX, maxX));
-        const constrainedY = Math.max(0, Math.min(newY, maxY));
-
-        draggedNode.style.left = constrainedX + 'px';
-        draggedNode.style.top = constrainedY + 'px';
-
-        // Update connections
-        updateAllConnections();
-    }
-
-    function stopDrag() {
-        if (draggedNode) {
-            draggedNode.classList.remove('dragging');
-            draggedNode = null;
-        }
-
-        document.removeEventListener('mousemove', drag);
-        document.removeEventListener('mouseup', stopDrag);
-    }
-
-    // Reset positions on page refresh
-    window.addEventListener('beforeunload', function() {
-        // Positions will naturally reset when page reloads
-    });
+    document.removeEventListener('mousemove', drag);
+    document.removeEventListener('mouseup', stopDrag);
+});

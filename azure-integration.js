@@ -1,9 +1,11 @@
 // Azure Integration Service for Infrastructure Visualizer
 // Provides Azure Virtual Machine data integration
+const { CloudService } = require('./cloud-utils.js'); // Import base class
 
-class AzureService {
+class AzureService extends CloudService {
     constructor() {
-        this.initialized = false;
+        super('Azure'); // Call parent constructor
+        // this.initialized = false; // Handled by CloudService
         // Note: This is a demo implementation
         // For production, you would use @azure/identity and @azure/arm-compute
         console.log('🔧 Initializing Azure Service (Demo Mode)...');
@@ -14,7 +16,7 @@ class AzureService {
             // In production, this would initialize Azure SDK
             // const { DefaultAzureCredential } = require('@azure/identity');
             // const { ComputeManagementClient } = require('@azure/arm-compute');
-            
+            await super.init(); // Call CloudService init if it had any base logic - it's abstract, so this is conceptual
             this.initialized = true;
             console.log('✅ Azure Service initialized successfully (Demo Mode)');
             return true;
@@ -138,22 +140,8 @@ class AzureService {
 
     convertVMToNodeData(azureVM, config = {}) {
         const powerState = azureVM.properties?.instanceView?.powerState || 'PowerState/unknown';
-        let status = 'offline';
-        
-        switch (powerState) {
-            case 'PowerState/running':
-                status = 'online';
-                break;
-            case 'PowerState/starting':
-            case 'PowerState/stopping':
-                status = 'warning';
-                break;
-            case 'PowerState/stopped':
-            case 'PowerState/deallocated':
-            default:
-                status = 'offline';
-                break;
-        }
+        // Use centralized status mapping
+        const status = this.mapProviderStatusToStandard(powerState);
 
         const vmSize = azureVM.properties?.hardwareProfile?.vmSize || 'Unknown';
         const privateIP = azureVM.properties?.networkProfile?.networkInterfaces?.[0]?.privateIPAddress || 'No private IP';
@@ -165,7 +153,7 @@ class AzureService {
             title: config.alias || azureVM.name,
             hostname: azureVM.properties?.osProfile?.computerName || azureVM.name,
             ip: publicIP !== 'No public IP' ? publicIP : privateIP,
-            status: status,
+            status: status, // Use mapped status
             position: { x: 300, y: 200 }, // Default position
             cloudProvider: 'Azure',
             metadata: {
@@ -177,7 +165,7 @@ class AzureService {
                 osType: azureVM.properties?.storageProfile?.osDisk?.osType,
                 privateIP: privateIP,
                 publicIP: publicIP,
-                resourceGroup: this.extractResourceGroup(azureVM.id),
+                resourceGroup: this.extractResourceGroup(azureVM.id), // Using helper from base class
                 environment: azureVM.tags?.Environment || 'Unknown',
                 application: azureVM.tags?.Application || 'Unknown',
                 isRealInstance: false, // Demo mode
@@ -189,11 +177,56 @@ class AzureService {
         };
     }
 
-    extractResourceGroup(resourceId) {
-        const parts = resourceId.split('/');
-        const rgIndex = parts.indexOf('resourceGroups');
-        return rgIndex >= 0 && rgIndex + 1 < parts.length ? parts[rgIndex + 1] : 'Unknown';
+    // Implementing abstract methods from CloudService
+    async getInstances(filters = {}) {
+        // This is a demo service, so we'll use discoverVirtualMachines
+        // In a real scenario, this might call a different Azure SDK method or backend endpoint
+        console.log('AzureService.getInstances called, using demo discoverVirtualMachines');
+        const { subscriptionId = 'demo-subscription', resourceGroup = 'demo-resource-group' } = filters;
+        const vms = await this.discoverVirtualMachines(subscriptionId, resourceGroup, filters);
+        return vms.map(vm => this.convertVMToNodeData(vm));
     }
+
+    async getInstanceDetails(instanceId, options = {}) {
+        // instanceId for Azure is the full resource ID.
+        // We need to parse it to get vmName, resourceGroup, subscriptionId for getVirtualMachine
+        console.log(`AzureService.getInstanceDetails called for ID: ${instanceId}`);
+        const { subscriptionId = 'demo-subscription', resourceGroup = 'demo-resource-group', vmName = '' } = options;
+        
+        let actualVmName = vmName;
+        let actualResourceGroup = resourceGroup;
+        let actualSubscriptionId = subscriptionId;
+
+        if (instanceId && typeof instanceId === 'string') {
+            const parts = instanceId.split('/');
+            const vmNameIndex = parts.indexOf('virtualMachines');
+            if (vmNameIndex !== -1 && vmNameIndex + 1 < parts.length) {
+                actualVmName = parts[vmNameIndex + 1];
+            }
+            const rgIndex = parts.indexOf('resourceGroups');
+            if (rgIndex !== -1 && rgIndex + 1 < parts.length) {
+                actualResourceGroup = parts[rgIndex + 1];
+            }
+            const subIndex = parts.indexOf('subscriptions');
+            if (subIndex !== -1 && subIndex + 1 < parts.length) {
+                actualSubscriptionId = parts[subIndex + 1];
+            }
+        }
+        if (!actualVmName) {
+            console.error('Could not determine VM Name from instanceId or options.');
+            return null;
+        }
+
+        const vmData = await this.getVirtualMachine(actualSubscriptionId, actualResourceGroup, actualVmName);
+        return vmData ? this.convertVMToNodeData(vmData) : null;
+    }
+
+    formatDataToNode(azureVM, config = {}) {
+        return this.convertVMToNodeData(azureVM, config);
+    }
+
+    // extractResourceGroup is now inherited from CloudService
+    /* extractResourceGroup(resourceId) { ... } */
 }
 
 module.exports = { AzureService };

@@ -14,6 +14,13 @@
         "description": "Added via API",
         "monitoringEnabled": true,
         "addedAt": "2025-05-31T20:49:16.192Z"
+      },
+      {
+        "id": "i-07eb72f116874d36d",
+        "alias": "Auto-6874d36d",
+        "description": "Auto-discovered instance",
+        "monitoringEnabled": true,
+        "autoDiscovered": true
       }
     ],
     "autoDiscovery": {
@@ -50,6 +57,20 @@
         "description": "Development container service",
         "monitoringEnabled": false,
         "isDemo": true
+      },
+      {
+        "name": "web-server-01",
+        "alias": "Auto-web-server-01",
+        "description": "Auto-discovered Azure VM",
+        "monitoringEnabled": true,
+        "autoDiscovered": true
+      },
+      {
+        "name": "database-01",
+        "alias": "Auto-database-01",
+        "description": "Auto-discovered Azure VM",
+        "monitoringEnabled": true,
+        "autoDiscovered": true
       }
     ]
   }

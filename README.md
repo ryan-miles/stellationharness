@@ -96,13 +96,13 @@ stellationharness/
 The visualizer is **currently connected** to real multi-cloud infrastructure:
 
 #### **AWS Integration** 🔶
-- **Target Instance**: `ec2-184-72-110-200.compute-1.amazonaws.com` (i-005557a2ed89a5759)
-- **Instance Details**: AmLinApp-01, t2.micro, us-east-1b, Production environment
+- **Target Instance**: Live EC2 instances via secure API integration
+- **Instance Details**: Production environment instances with real-time monitoring
 - **Real-time Data**: Backend API fetches live EC2 metadata, network info, and tags
 
 #### **GCP Integration** 🔵
-- **Target Instance**: `gcpapp01` (8330479473297479604)
-- **Instance Details**: e2-small, us-east4-b, Production environment, IP: 34.145.180.162
+- **Target Instance**: Live GCP Compute Engine instances
+- **Instance Details**: Production environment with real-time monitoring
 - **Authentication**: Google Cloud CLI with application default credentials
 - **Real-time Data**: Live GCP Compute Engine API with intelligent fallback caching
 
@@ -143,7 +143,7 @@ The visualizer is **actively connected** to real multi-cloud infrastructure:
 
 #### **🔶 AWS Integration**
 - **🔗 Backend API**: Express server on port 3001 with AWS SDK integration
-- **🎯 Target Instance**: ec2-184-72-110-200.compute-1.amazonaws.com (i-005557a2ed89a5759)
+- **🎯 Target Instance**: Live EC2 instances via secure API integration
 - **📊 Real Data Flow**: AWS API → Backend Server → Frontend → Visualization
 - **🔄 Live Updates**: Real-time EC2 state, metadata, and network information
 
@@ -168,7 +168,7 @@ Live Instance   Express + AWS SDK        React/JavaScript         Interactive No
 ```
 
 ### 🔧 Technical Implementation
-- **Authentication**: AWS credentials configured (user: rlmiles77, account: 243728312407)
+- **Authentication**: AWS credentials via secure credential chain (IAM roles recommended)
 - **API Endpoints**: `/api/ec2-instances` with comprehensive instance data
 - **Data Format**: Multi-cloud standardized with cloudProvider metadata
 - **Error Handling**: Graceful fallback to sample data if AWS unavailable
