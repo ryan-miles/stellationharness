@@ -3,23 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ACME-Co Infrastructure Visualizer</title>
+    <title>NewCo Infrastructure Visualizer</title>
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/components.css">
+    <link rel="icon" type="image/png" href="assets/icons/status-online.svg">
+    <style>
+        /* Visualization-focused styles */
+        .visualization-header {
+            background: linear-gradient(135deg, #b3b3b4 0%, #111118 100%);
+            color: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 0px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .visualization-header h1 {
+            margin: 0;
+            font-size: 2.2em;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .header-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 15px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s;
+            display: inline-block;
+        }
+        
+        .header-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            text-decoration: none;
+            color: white;
+        }
+        
+        #nodes-container {
+            position: relative;
+            min-height: 600px;
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            border: 0px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .visualization-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 0.8em;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .legend {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-size: 0.8em;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .legend-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .legend-icon {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .legend-icon.online { background: #28a745; }
+        .legend-icon.warning { background: #ffc107; }
+        .legend-icon.offline { background: #dc3545; }
+        
+        @media (max-width: 768px) {
+            .visualization-header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            #nodes-container {
+                padding: 15px;
+            }
+        }
+    </style>
 </head>
 <body>
     <div id="app">
-        <h1>ACME-Co Infrastructure Visualizer</h1>
+        <div class="visualization-header">
+            <span style="font-size:2.2em;line-height:1;vertical-align:middle;display:inline-block;margin-right:10px;"></span>
+            <h1 style="margin:0;display:inline-block;vertical-align:middle;font-size:2.2em;font-weight:bold;">NewCo Infrastructure Visualizer</h1>
+            <div class="header-actions">
+                <a href="management.html" class="header-btn">🛠️ Manage Infrastructure</a>
+            </div>
+        </div>
+        
         <div id="nodes-container">
             <!-- Draggable node blocks will be added here -->
+            <div class="visualization-status" id="visualization-status" style="display:none;">
+                Loading infrastructure...
+            </div>
+            
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-icon online"></div>
+                    Online
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon warning"></div>
+                    Warning
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon offline"></div>
+                    Offline
+                </div>
+            </div>
         </div>
     </div>
     
     <!-- Load scripts in correct order -->
+    <script src="js/config.js"></script>
+    <script src="cloud-utils.js"></script>
     <script src="js/aws-integration.js"></script>
     <script src="js/dragdrop.js"></script>
     <script src="js/node.js"></script>
     <script src="js/connection.js"></script>
     <script src="js/main.js"></script>
+    <script>
+        // Visualization page specific initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Visualization page loaded, initializing...');
+            
+            // Initialize only the visualization
+            initializeVisualization();
+            
+            // Update status periodically
+            setInterval(updateVisualizationStatus, 30000); // Every 30 seconds
+        });
+    </script>
 </body>
 </html>

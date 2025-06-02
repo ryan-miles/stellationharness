@@ -3,6 +3,13 @@ console.log('node.js loaded');
 function createInfraNode(nodeData) {
     const container = document.getElementById('nodes-container');
     
+    // Check if node already exists and remove it to prevent duplicates
+    const existingNode = document.getElementById(nodeData.id);
+    if (existingNode) {
+        console.log(`🔄 Removing existing node: ${nodeData.id}`);
+        existingNode.remove();
+    }
+    
     // Create node element
     const node = document.createElement('div');
     node.className = 'node';

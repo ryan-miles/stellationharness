@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACME-Co Infrastructure Management</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/components.css">
+    <style>
+        /* Management-specific styles */
+        .management-header {
+            background: linear-gradient(135deg, #b3b3b4 0%, #111118 100%);
+            color: white;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 0px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .management-header h1 {
+            margin: 0;
+            font-size: 2.2em;
+        }
+        
+        .management-header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .navigation-bar {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 30px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .nav-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s;
+            display: inline-block;
+        }
+        
+        .nav-button:hover {
+            background: #0056b3;
+            text-decoration: none;
+            color: white;
+        }
+        
+        .nav-button.secondary {
+            background: #6c757d;
+        }
+        
+        .nav-button.secondary:hover {
+            background: #5a6268;
+        }
+        
+        .management-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .management-section {
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .management-section h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        /* Node selection panel styling */
+        #node-selection-panel {
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .selection-header {
+            margin-bottom: 20px;
+        }
+        
+        .selection-header h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        
+        .summary-stats {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .stat {
+            background: #f8f9fa;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            border: 1px solid #dee2e6;
+        }
+        
+        .stat.visible {
+            background: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .stat.hidden {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        
+        .selection-controls {
+            margin-bottom: 20px;
+        }
+        
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-select, .search-input {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .bulk-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .action-btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        
+        .action-btn.primary {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .action-btn.primary:hover {
+            background-color: #0056b3;
+        }
+        
+        .action-btn.secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .action-btn.secondary:hover {
+            background-color: #5a6268;
+        }
+        
+        .action-btn.warning {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .action-btn.warning:hover {
+            background-color: #c82333;
+        }
+        
+        .instance-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        
+        .instance-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+        
+        .instance-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .instance-item.hidden {
+            opacity: 0.6;
+        }
+        
+        .instance-checkbox {
+            margin-right: 10px;
+        }
+        
+        .instance-info {
+            flex: 1;
+        }
+        
+        .instance-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .instance-details {
+            font-size: 0.9em;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
+        
+        .instance-actions {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .visibility-toggle {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+        
+        .visibility-toggle:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .provider-badge {
+            font-size: 0.8em;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        
+        .provider-badge.aws {
+            background: #ff9900;
+            color: white;
+        }
+        
+        .provider-badge.gcp {
+            background: #4285f4;
+            color: white;
+        }
+        
+        .provider-badge.azure {
+            background: #0078d4;
+            color: white;
+        }
+        
+        @media (max-width: 768px) {
+            .management-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .navigation-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .filter-row, .bulk-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="management-header">
+            <h1>Infrastructure Management</h1>
+            <p>Manage your multi-cloud infrastructure instances, configuration, and discovery settings</p>
+        </div>
+        
+        <div class="navigation-bar">
+            <a href="index.html" class="nav-button">🔙 Back to Visualization</a>
+            <a href="#instance-management" class="nav-button secondary">Instance Management</a>
+            <a href="#node-selection" class="nav-button secondary">Node Selection</a>
+            <span style="margin-left: auto; color: #666; font-size: 0.9em;">
+                💡 Use this page to configure and manage your infrastructure
+            </span>
+        </div>
+        
+        <div class="management-grid">
+            <!-- Instance Management Section -->
+            <div class="management-section" id="instance-management">
+                <h2>🛠️ Instance Management</h2>
+                <div id="admin-controls">
+                    <!-- This will be populated by JavaScript -->
+                </div>
+            </div>
+            
+            <!-- Quick Actions Section -->
+            <div class="management-section">
+                <h2>⚡ Quick Actions</h2>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button id="refresh-all-btn" class="nav-button">🔄 Refresh All Data</button>
+                    <button id="toggle-node-selection-btn" class="nav-button secondary">🔧 Toggle Node Selection Panel</button>
+                    <a href="index.html" class="nav-button">👁️ View Live Infrastructure</a>
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+                    <h4 style="margin-top: 0;">📊 System Status</h4>
+                    <div id="system-status">
+                        <div>Backend: <span id="backend-status">Checking...</span></div>
+                        <div>Total Instances: <span id="total-instances">-</span></div>
+                        <div>Visible Instances: <span id="visible-instances">-</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Node Selection Panel (Full Width) -->
+        <div class="management-section full-width" id="node-selection">
+            <h2>🔧 Instance Visibility Management</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Control which instances are visible in the infrastructure visualization. 
+                Use filters to find specific instances and bulk operations to manage visibility.
+            </p>
+            <div id="node-selection-panel">
+                <!-- This will be populated by the NodeSelectionManager -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Load scripts in correct order -->
+    <script src="js/aws-integration.js"></script>
+    <script src="js/dragdrop.js"></script>
+    <script src="js/node.js"></script>
+    <script src="js/connection.js"></script>
+    <script>
+        // Management page specific configuration
+        const CONFIG = {
+            backend: {
+                url: 'http://localhost:3001',
+                endpoints: {
+                    instances: '/api/ec2-instances',
+                    allInstances: '/api/all-instances',
+                    instance: '/api/ec2-instance',
+                    gcpInstance: '/api/gcp-instance',
+                    status: '/api/ec2-instance/status',
+                    health: '/api/health',
+                    addInstance: '/api/config/aws/add-instance',
+                    removeInstance: '/api/config/aws/remove-instance',
+                    discoverInstances: '/api/discover-instances',
+                    autoDiscoveryStatus: '/api/auto-discovery/status',
+                    autoDiscoveryToggle: '/api/auto-discovery/toggle',
+                    instanceLibrary: '/api/instance-library',
+                    instanceLibraryToggleVisibility: '/api/instance-library/toggle-visibility',
+                    instanceLibraryBulkToggle: '/api/instance-library/bulk-toggle'
+                }
+            }
+        };
+        
+        // Management page is in management mode
+        window.MANAGEMENT_MODE = true;
+    </script>
+    <script src="js/main.js"></script>
+    
+    <script>        // Management page specific initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Management page loaded, initializing...');
+            
+            // Initialize the NodeSelectionManager for management page
+            initializeNodeSelectionManager();
+            
+            // Initialize admin controls
+            addAdminControls();
+            
+            // Initialize node selection panel
+            initializeNodeSelectionPanel();
+            
+            // Add event listeners for quick actions
+            document.getElementById('refresh-all-btn').addEventListener('click', refreshAllData);
+            document.getElementById('toggle-node-selection-btn').addEventListener('click', toggleNodeSelectionPanel);
+            
+            // Load initial system status
+            loadSystemStatus();
+        });
+        
+        async function initializeNodeSelectionPanel() {
+            try {
+                // Load the instance library and render the selection panel
+                await nodeSelectionManager.loadInstanceLibrary();
+                nodeSelectionManager.renderSelectionPanel();
+                console.log('✅ Node selection panel initialized');
+            } catch (error) {
+                console.error('❌ Failed to initialize node selection panel:', error);
+                document.getElementById('node-selection-panel').innerHTML = `
+                    <div style="color: #dc3545; padding: 20px; text-align: center;">
+                        <p><strong>⚠️ Failed to load instance library</strong></p>
+                        <p>${error.message}</p>
+                        <button onclick="initializeNodeSelectionPanel()" class="action-btn primary">🔄 Retry</button>
+                    </div>
+                `;
+            }
+        }
+        
+        async function refreshAllData() {
+            const btn = document.getElementById('refresh-all-btn');
+            const originalText = btn.textContent;
+            btn.textContent = '🔄 Refreshing...';
+            btn.disabled = true;
+            
+            try {
+                // Refresh instance library
+                await nodeSelectionManager.loadInstanceLibrary();
+                nodeSelectionManager.renderSelectionPanel();
+                
+                // Refresh system status
+                await loadSystemStatus();
+                
+                // Refresh discovery status
+                if (typeof refreshDiscoveryStatus === 'function') {
+                    await refreshDiscoveryStatus();
+                }
+                
+                showSystemMessage('✅ All data refreshed successfully', 'success');
+            } catch (error) {
+                console.error('❌ Failed to refresh data:', error);
+                showSystemMessage('❌ Failed to refresh data: ' + error.message, 'error');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+        
+        async function loadSystemStatus() {
+            try {
+                // Check backend health
+                const healthResponse = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.health}`);
+                const backendStatus = document.getElementById('backend-status');
+                
+                if (healthResponse.ok) {
+                    backendStatus.textContent = '✅ Online';
+                    backendStatus.style.color = '#28a745';
+                } else {
+                    backendStatus.textContent = '❌ Offline';
+                    backendStatus.style.color = '#dc3545';
+                }
+                
+                // Load instance counts
+                const libraryResponse = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibrary}`);
+                if (libraryResponse.ok) {
+                    const library = await libraryResponse.json();
+                    document.getElementById('total-instances').textContent = library.summary?.total || 0;
+                    document.getElementById('visible-instances').textContent = library.summary?.visible || 0;
+                }
+                
+            } catch (error) {
+                console.error('❌ Failed to load system status:', error);
+                document.getElementById('backend-status').textContent = '❌ Error';
+                document.getElementById('backend-status').style.color = '#dc3545';
+            }
+        }
+        
+        function showSystemMessage(message, type) {
+            // Create or update a system message area
+            let messageArea = document.getElementById('system-messages');
+            if (!messageArea) {
+                messageArea = document.createElement('div');
+                messageArea.id = 'system-messages';
+                messageArea.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    z-index: 1000;
+                    max-width: 400px;
+                `;
+                document.body.appendChild(messageArea);
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.style.cssText = `
+                padding: 10px 15px;
+                margin-bottom: 10px;
+                border-radius: 5px;
+                font-weight: bold;
+                ${type === 'success' ? 'background: #d4edda; border: 1px solid #c3e6cb; color: #155724;' : 
+                  type === 'error' ? 'background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;' : 
+                  'background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;'}
+            `;
+            messageDiv.textContent = message;
+            
+            messageArea.appendChild(messageDiv);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (messageDiv.parentNode) {
+                    messageDiv.parentNode.removeChild(messageDiv);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

@@ -70,18 +70,16 @@ const authenticateRequest = async (req, res, next) => {
                 error: 'Authentication required',
                 message: 'API key or token must be provided'
             });
-        }
-
-        const authResult = await authManager.authenticateApiKey(token);
-        if (!authResult.valid) {
+        }        const authResult = await authManager.validateApiKey(token);
+        if (!authResult) {
             return res.status(401).json({
                 success: false,
                 error: 'Invalid authentication',
-                message: authResult.error || 'Invalid API key or token'
+                message: 'Invalid API key or token'
             });
         }
 
-        req.user = authResult.user;
+        req.user = authResult;
         req.permissions = authResult.permissions;
         next();
     } catch (error) {
@@ -125,6 +123,9 @@ const createRateLimit = (windowMs, max, message) => {
 const app = express();
 const port = 3001;
 
+// CORS configuration
+app.use(cors());
+
 // **SECURITY MIDDLEWARE CONFIGURATION**
 // Security headers
 app.use(helmet({
@@ -144,10 +145,10 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false
 }));
 
-// Rate limiting for different endpoint types
-const generalRateLimit = createRateLimit(15 * 60 * 1000, 100, 'Too many requests, please try again later');
-const apiRateLimit = createRateLimit(15 * 60 * 1000, 200, 'Too many API requests, please try again later');
-const authRateLimit = createRateLimit(15 * 60 * 1000, 20, 'Too many authentication attempts, please try again later');
+// Rate limiting for different endpoint types (TEMPORARILY INCREASED FOR TROUBLESHOOTING)
+const generalRateLimit = createRateLimit(15 * 60 * 1000, 10000, 'Too many requests, please try again later');
+const apiRateLimit = createRateLimit(15 * 60 * 1000, 20000, 'Too many API requests, please try again later');
+const authRateLimit = createRateLimit(15 * 60 * 1000, 2000, 'Too many authentication attempts, please try again later');
 
 // Apply rate limiting
 app.use('/api/auth', authRateLimit);
@@ -250,10 +251,8 @@ app.post('/api/auth/login', authRateLimit, async (req, res) => {
                 error: 'Invalid API key format',
                 details: validation.errors
             });
-        }
-
-        const authResult = await authManager.authenticateApiKey(apiKey);
-        if (!authResult.valid) {
+        }        const authResult = await authManager.validateApiKey(apiKey);
+        if (!authResult) {
             return res.status(401).json({
                 success: false,
                 error: 'Authentication failed',
@@ -262,7 +261,7 @@ app.post('/api/auth/login', authRateLimit, async (req, res) => {
         }
 
         // Generate JWT token
-        const token = await authManager.generateJWT(authResult.user);
+        const token = await authManager.generateJWT(authResult);
         
         res.json({
             success: true,
@@ -304,6 +303,50 @@ app.post('/api/auth/validate', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Token validation error'
+        });
+    }
+});
+
+// Get API key information (admin only)
+app.get('/api/auth/api-keys', authenticateRequest, requirePermission('manage:config'), async (req, res) => {
+    try {
+        const apiKeys = authManager.listApiKeys();
+        res.json({
+            success: true,
+            apiKeys
+        });
+    } catch (error) {
+        console.error('Error fetching API keys:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch API keys'
+        });
+    }
+});
+
+// Get current API key for configuration
+app.get('/api/auth/current-key', authenticateRequest, requirePermission('read:config'), async (req, res) => {
+    try {
+        // Find the current user's API key from the request
+        const currentApiKey = req.headers['x-api-key'] || req.headers.authorization?.replace('Bearer ', '');
+        
+        if (!currentApiKey) {
+            return res.status(400).json({
+                success: false,
+                error: 'No API key in request'
+            });
+        }
+
+        res.json({
+            success: true,
+            apiKey: currentApiKey,
+            user: req.user
+        });
+    } catch (error) {
+        console.error('Error getting current API key:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get current API key'
         });
     }
 });
@@ -751,10 +794,12 @@ async function fetchGCPInstances() {
                 gcpConfig.project
             );
             
+            // gcpData is already formatted by getInstanceDetails(), don't re-process
             instances.push({
-                ...gcpService.convertToNodeFormat(gcpData),
+                ...gcpData,
                 cloudProvider: 'GCP',
-                dataSource: 'GCP API/Cache'
+                dataSource: 'GCP API/Cache',
+                position: { x: 750, y: 300 } // Add default position
             });
         } catch (error) {
             console.error(`Failed to fetch GCP instance ${instanceConfig.name}:`, error.message);
@@ -1056,8 +1101,7 @@ app.get('/api/instance-library', authenticateRequest, requirePermission('read:in
                 });
             }
         }
-        
-        // Fetch GCP instances with visibility status
+          // Fetch GCP instances with visibility status
         const gcpConfig = instancesConfig.gcp || {};
         for (const instanceConfig of gcpConfig.instances || []) {
             try {
@@ -1068,7 +1112,7 @@ app.get('/api/instance-library', authenticateRequest, requirePermission('read:in
                 );
                 
                 library.gcp.push({
-                    ...gcpService.convertToNodeFormat(gcpData),
+                    ...gcpData,
                     cloudProvider: 'GCP',
                     dataSource: 'GCP API/Cache',
                     isVisible: instanceConfig.visualizationEnabled !== false,

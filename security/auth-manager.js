@@ -13,24 +13,38 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
+const fs = require('fs').promises;
+const path = require('path');
 
 class SecurityManager {
     constructor() {
         this.jwtSecret = process.env.JWT_SECRET || this.generateSecureSecret();
-        this.apiKeys = new Map(); // In production, store in secure database
+        this.apiKeys = new Map(); // Temporary storage, will be loaded from disk
         this.sessionTimeout = 60 * 60 * 1000; // 1 hour
         this.maxLoginAttempts = 5;
         this.lockoutDuration = 15 * 60 * 1000; // 15 minutes
         this.loginAttempts = new Map();
         
+        // File paths for persistent storage
+        this.apiKeysFile = path.join(__dirname, '..', 'config', 'api-keys.json');
+        this.secretsFile = path.join(__dirname, '..', 'config', 'secrets.json');
+        
+        // Dedicated encryption key for API key storage (separate from JWT)
+        this.encryptionKey = null;
+        
+        // Ensure config directory exists
+        this.ensureConfigDir();
+        
         // Default roles and permissions
         this.roles = {
             'viewer': ['read:instances', 'read:config'],
             'operator': ['read:instances', 'read:config', 'manage:instances'],
-            'admin': ['read:instances', 'read:config', 'manage:instances', 'manage:config', 'manage:discovery']
-        };
+            'admin': ['read:instances', 'read:config', 'manage:instances', 'manage:config', 'manage:discovery']        };
         
-        this.initializeDefaultCredentials();
+        // Initialize encryption key and then load API keys
+        this.initializeEncryptionKey().then(() => {
+            this.initializeDefaultCredentials();
+        });
     }
 
     generateSecureSecret() {
@@ -39,13 +53,123 @@ class SecurityManager {
         return secret;
     }
 
-    async initializeDefaultCredentials() {
-        // Create default admin API key if none exists
-        if (this.apiKeys.size === 0) {
-            const defaultApiKey = await this.createApiKey('admin', 'admin', 'Default administrator');
-            console.log(`🔑 Default admin API key created: ${defaultApiKey}`);
-            console.log('⚠️ Change this immediately in production!');
+    // File system operations for persistent storage
+    async ensureConfigDir() {
+        try {
+            const configDir = path.dirname(this.apiKeysFile);
+            await fs.mkdir(configDir, { recursive: true });
+        } catch (error) {
+            console.error('Failed to create config directory:', error);        }
+    }
+
+    // Initialize persistent encryption key
+    async initializeEncryptionKey() {
+        try {
+            // Try to load existing encryption key
+            const keyContent = await fs.readFile(this.secretsFile, 'utf8');
+            const keyData = JSON.parse(keyContent);
+            this.encryptionKey = Buffer.from(keyData.encryptionKey, 'hex');
+            console.log('🔐 Loaded existing encryption key');
+        } catch (error) {
+            if (error.code === 'ENOENT') {
+                // Generate new encryption key and save it
+                this.encryptionKey = crypto.randomBytes(32); // 256-bit key
+                const keyData = {
+                    encryptionKey: this.encryptionKey.toString('hex'),
+                    createdAt: new Date().toISOString()
+                };
+                await fs.writeFile(this.secretsFile, JSON.stringify(keyData, null, 2), { mode: 0o600 });
+                console.log('🆕 Generated new persistent encryption key');
+            } else {
+                console.error('Failed to load encryption key:', error);
+                throw error;
+            }
         }
+    }    // Encrypt data for storage
+    encryptData(data) {
+        const algorithm = 'aes-256-gcm';
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv(algorithm, this.encryptionKey, iv);
+        
+        let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        
+        const authTag = cipher.getAuthTag();
+        
+        return {
+            encrypted,
+            iv: iv.toString('hex'),
+            authTag: authTag.toString('hex')
+        };
+    }
+
+    // Decrypt data from storage
+    decryptData(encryptedData) {
+        try {
+            const algorithm = 'aes-256-gcm';
+            const iv = Buffer.from(encryptedData.iv, 'hex');
+            const decipher = crypto.createDecipheriv(algorithm, this.encryptionKey, iv);
+            
+            decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
+            
+            let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
+            decrypted += decipher.final('utf8');
+            
+            return JSON.parse(decrypted);
+        } catch (error) {
+            console.error('Failed to decrypt data:', error);
+            return null;
+        }
+    }
+
+    // Save API keys to encrypted file
+    async saveApiKeys() {
+        try {
+            const apiKeysData = Array.from(this.apiKeys.entries()).map(([key, value]) => [key, value]);
+            const encryptedData = this.encryptData(apiKeysData);
+            
+            await fs.writeFile(this.apiKeysFile, JSON.stringify(encryptedData, null, 2), { mode: 0o600 });
+            console.log('🔐 API keys saved securely');
+        } catch (error) {
+            console.error('❌ Failed to save API keys:', error);
+        }
+    }
+
+    // Load API keys from encrypted file
+    async loadApiKeys() {
+        try {
+            const fileContent = await fs.readFile(this.apiKeysFile, 'utf8');
+            const encryptedData = JSON.parse(fileContent);
+            const apiKeysData = this.decryptData(encryptedData);
+            
+            if (apiKeysData) {
+                this.apiKeys = new Map(apiKeysData);
+                console.log(`🔑 Loaded ${this.apiKeys.size} API keys from storage`);
+                return true;
+            }
+        } catch (error) {
+            if (error.code !== 'ENOENT') {
+                console.error('❌ Failed to load API keys:', error);
+            }
+        }        return false;
+    }
+
+    async initializeDefaultCredentials() {
+        // First try to load existing API keys from storage
+        const loaded = await this.loadApiKeys();
+        
+        if (loaded && this.apiKeys.size > 0) {
+            console.log(`🔑 Using ${this.apiKeys.size} existing API keys from storage`);
+            return;
+        }
+        
+        // Create default admin API key if none exists
+        console.log('🆕 No existing API keys found, creating default admin key...');
+        const defaultApiKey = await this.createApiKey('admin', 'admin', 'Default administrator');
+        console.log(`🔑 Default admin API key created: ${defaultApiKey}`);
+        console.log('⚠️ Change this immediately in production!');
+        
+        // Save the new key to storage        await this.saveApiKeys();
     }
 
     // API Key Management
@@ -62,9 +186,34 @@ class SecurityManager {
             lastUsed: null,
             isActive: true
         });
-        
+          // Save to persistent storage
+        await this.saveApiKeys();
         console.log(`✅ API key created for ${username} with role ${role}`);
         return apiKey;
+    }
+
+    // Remove API key
+    async revokeApiKey(apiKey) {
+        if (this.apiKeys.has(apiKey)) {
+            this.apiKeys.delete(apiKey);
+            await this.saveApiKeys();
+            console.log(`🗑️ API key revoked: ${apiKey.substring(0, 10)}...`);
+            return true;
+        }
+        return false;
+    }
+
+    // List all API keys (without exposing the actual keys)
+    listApiKeys() {
+        return Array.from(this.apiKeys.entries()).map(([key, data]) => ({
+            keyPreview: key.substring(0, 10) + '...',
+            username: data.username,
+            role: data.role,
+            description: data.description,
+            createdAt: data.createdAt,
+            lastUsed: data.lastUsed,
+            isActive: data.isActive
+        }));
     }
 
     async validateApiKey(apiKey) {
@@ -79,6 +228,9 @@ class SecurityManager {
 
         // Update last used timestamp
         keyData.lastUsed = new Date();
+        
+        // Save updated timestamp (non-blocking)
+        this.saveApiKeys().catch(err => console.error('Failed to save API key update:', err));
         
         return {
             username: keyData.username,

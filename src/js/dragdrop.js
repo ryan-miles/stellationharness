@@ -14,8 +14,15 @@ function startDrag(e) {
     const rect = draggedElement.getBoundingClientRect();
     const containerRect = document.getElementById('nodes-container').getBoundingClientRect();
     
-    dragOffset.x = e.clientX - (rect.left - containerRect.left);
-    dragOffset.y = e.clientY - (rect.top - containerRect.top);
+    // Calculate the offset from the mouse position to the element's top-left corner
+    // relative to the container
+    const elementLeft = rect.left - containerRect.left;
+    const elementTop = rect.top - containerRect.top;
+    const mouseX = e.clientX - containerRect.left;
+    const mouseY = e.clientY - containerRect.top;
+    
+    dragOffset.x = mouseX - elementLeft;
+    dragOffset.y = mouseY - elementTop;
     
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', stopDrag);

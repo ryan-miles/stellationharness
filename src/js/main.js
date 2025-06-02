@@ -1,71 +1,35 @@
 console.log('main.js loaded');
 
-// Configuration for API endpoints
-const CONFIG = {
-    backend: {
-        url: 'http://localhost:3001',
-        endpoints: {
-            instances: '/api/ec2-instances',
-            allInstances: '/api/all-instances',
-            instance: '/api/ec2-instance',
-            gcpInstance: '/api/gcp-instance',
-            status: '/api/ec2-instance/status',
-            health: '/api/health',
-            addInstance: '/api/config/aws/add-instance',
-            removeInstance: '/api/config/aws/remove-instance',
-            discoverInstances: '/api/discover-instances',
-            autoDiscoveryStatus: '/api/auto-discovery/status',
-            autoDiscoveryToggle: '/api/auto-discovery/toggle',
-            instanceLibrary: '/api/instance-library',
-            instanceLibraryToggleVisibility: '/api/instance-library/toggle-visibility',
-            instanceLibraryBulkToggle: '/api/instance-library/bulk-toggle'
-        }
+// Authentication helper function
+function getAuthHeaders() {
+    return {
+        'Content-Type': 'application/json',
+        'x-api-key': CONFIG.auth.apiKey
+    };
+}
+
+// Enhanced fetch function with authentication
+async function authenticatedFetch(url, options = {}) {
+    const defaultOptions = {
+        headers: getAuthHeaders(),
+        ...options
+    };
+    
+    // Merge headers if additional headers are provided
+    if (options.headers) {
+        defaultOptions.headers = {
+            ...defaultOptions.headers,
+            ...options.headers
+        };
     }
-};
+    
+    console.log(`🔐 Making authenticated request to: ${url}`);
+    return fetch(url, defaultOptions);
+}
 
 // Global variables for nodes and connections
 let currentNodes = [];
 let currentConnections = [];
-
-// Sample data for nodes (multi-cloud infrastructure examples)
-// These will be combined with real AWS data when available
-const sampleNodes = [
-    {
-        id: 'azure-container-dev',
-        type: 'Container',
-        title: 'API Service',
-        hostname: 'localhost',
-        ip: '127.0.0.1:8080',
-        status: 'warning',
-        position: { x: 350, y: 450 }, /* Adjusted for wider blocks and better spacing */
-        metadata: {
-            environment: 'Development',
-            instanceType: 'Standard_B2s',
-            availabilityZone: 'eastus-1a',
-            cloudProvider: 'Azure'
-        }
-    },
-    {
-        id: '8330479473297479604',
-        type: 'Compute Engine',
-        title: 'finance-is',
-        hostname: 'finance-is',
-        ip: '34.145.180.162',
-        status: 'online',
-        position: { x: 750, y: 300 }, /* Moved further right to accommodate wider blocks */
-        metadata: {
-            environment: 'Production',
-            instanceType: 'e2-small',
-            availabilityZone: 'us-east4-b',
-            cloudProvider: 'GCP',
-            machineType: 'e2-small',
-            zone: 'us-east4-b',
-            project: 'operating-pod-461417-t6',
-            isRealInstance: true,
-            dataSource: 'GCP Cache'
-        }
-    }
-];
 
 // Smart connections based on common patterns
 function generateSmartConnections(nodes) {
@@ -145,171 +109,83 @@ const FrontendErrorHandler = {
 
 async function initializeVisualization() {
     console.log('Initializing visualization...');
-    
-    // Add refresh button and admin controls if they don't exist
-    if (!document.getElementById('refresh-btn')) {
-        addRefreshButton();
-    }
-    if (!document.getElementById('admin-controls')) {
-        addAdminControls();
-    }
-    
-    // Show loading indicator
     showLoadingIndicator();
-    
     try {
         let nodes = [];
         let dataSource = 'Unknown';
-        
-        if (window.ec2Service) {
-            console.log('🔍 Fetching real multi-cloud instances...');
-            
-            try {
-                // Use the new enhanced all-instances endpoint
-                const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.allInstances}`);
-                if (response.ok) {
-                    const responseData = await response.json();
-                    
-                    // Handle standardized response format
-                    const allInstances = responseData.data ? responseData.data.instances : responseData;
-                    const partialErrors = responseData.data?.partialErrors || [];
-                    
-                    console.log(`📊 Fetched ${allInstances.length} instances from enhanced backend`);
-                    if (partialErrors.length > 0) {
-                        console.warn('⚠️ Some providers had errors:', partialErrors);
-                    }
-                    
-                    // Position instances in a grid layout
-                    allInstances.forEach((instance, index) => {
-                        const row = Math.floor(index / 3); // 3 instances per row
-                        const col = index % 3;
-                        instance.position = { 
-                            x: 200 + (col * 320), // 320px spacing for 250px wide nodes + margins
-                            y: 150 + (row * 220)  // 220px vertical spacing
-                        };
-                    });
-                    
-                    // Add Azure sample if not present
-                    const azureSampleNode = sampleNodes.find(n => n.metadata?.cloudProvider === 'Azure');
-                    if (azureSampleNode && !allInstances.some(n => n.metadata?.cloudProvider === 'Azure')) {
-                        azureSampleNode.position = { 
-                            x: 200 + (allInstances.length % 3) * 320, 
-                            y: 150 + Math.floor(allInstances.length / 3) * 220 
-                        };
-                        allInstances.push(azureSampleNode);
-                    }
-                    
-                    nodes = allInstances;
-                    
-                    // Analyze data sources
-                    const awsNodes = nodes.filter(n => n.cloudProvider === 'AWS');
-                    const gcpNodes = nodes.filter(n => n.cloudProvider === 'GCP');
-                    const azureNodes = nodes.filter(n => n.cloudProvider === 'Azure' || n.metadata?.cloudProvider === 'Azure');
-                    
-                    const sources = [];
-                    if (awsNodes.length > 0) sources.push(`${awsNodes.length} AWS`);
-                    if (gcpNodes.length > 0) sources.push(`${gcpNodes.length} GCP`);
-                    if (azureNodes.length > 0) sources.push(`${azureNodes.length} Azure`);
-                    
-                    dataSource = `Enhanced Multi-Cloud (${sources.join(' + ')})`;
-                    showSuccessMessage(`✅ Enhanced multi-cloud: ${sources.join(' + ')}`);
-                } else {
-                    throw new Error(`Enhanced backend responded with ${response.status}`);
-                }
-            } catch (enhancedError) {
-                console.log('⚠️ Enhanced backend not available, trying fallback methods:', enhancedError.message);
-                
-                // Fallback to individual APIs
-                const ec2Nodes = await window.ec2Service.getMultipleInstancesFromEC2();
-                
-                // Try to fetch GCP data
-                let gcpNodes = [];
-                try {
-                    const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.gcpInstance}`);
-                    if (response.ok) {
-                        const gcpData = await response.json();
-                        const gcpNode = {
-                            id: gcpData.id,
-                            type: gcpData.type,
-                            title: gcpData.name,
-                            hostname: gcpData.hostname,
-                            ip: gcpData.ip,
-                            status: gcpData.status,
-                            position: { x: 700, y: 300 },
-                            metadata: gcpData.metadata
-                        };
-                        gcpNodes = [gcpNode];
-                        console.log('✅ Successfully fetched real GCP data:', gcpData.name);
-                    }
-                } catch (gcpError) {
-                    console.log('⚠️ Could not fetch live GCP data, using cached data:', gcpError.message);
-                    gcpNodes = [sampleNodes.find(n => n.metadata?.cloudProvider === 'GCP')];
-                }
-                
-                // Combine real data with remaining sample nodes
-                const azureSampleNode = sampleNodes.find(n => n.metadata?.cloudProvider === 'Azure');
-                
-                nodes = [...ec2Nodes, ...gcpNodes, azureSampleNode].filter(Boolean);
-                
-                // Determine data source from nodes
-                const realAwsNodes = ec2Nodes.filter(n => n.metadata?.isRealInstance);
-                const realGcpNodes = gcpNodes.filter(n => n.metadata?.isRealInstance);
-                
-                if (realAwsNodes.length > 0 || realGcpNodes.length > 0) {
-                    const cloudSources = [];
-                    if (realAwsNodes.length > 0) cloudSources.push(`${realAwsNodes.length} AWS`);
-                    if (realGcpNodes.length > 0) cloudSources.push(`${realGcpNodes.length} GCP`);
-                    
-                    dataSource = `Multi-Cloud Live (${cloudSources.join(' + ')}, 1 Azure sample)`;
-                    showSuccessMessage(`✅ Live multi-cloud: ${cloudSources.join(' + ')} + Azure demo`);
-                } else {
-                    dataSource = `Multi-Cloud Demo (${nodes.length} total nodes)`;
-                }
+
+        // Only fetch real multi-cloud instances from backend
+        const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.allInstances}`);
+        if (response.ok) {
+            const responseData = await response.json();
+            const allInstances = responseData.data ? responseData.data.instances : responseData;
+            const partialErrors = responseData.data?.partialErrors || [];
+            console.log(`📊 Fetched ${allInstances.length} instances from enhanced backend`);
+            if (partialErrors.length > 0) {
+                console.warn('⚠️ Some providers had errors:', partialErrors);
             }
+            // Position instances in a grid layout
+            allInstances.forEach((instance, index) => {
+                const row = Math.floor(index / 3);
+                const col = index % 3;
+                instance.position = {
+                    x: 200 + (col * 320),
+                    y: 150 + (row * 220)
+                };
+            });
+            nodes = allInstances;
+            // Analyze data sources
+            const awsNodes = nodes.filter(n => n.cloudProvider === 'AWS');
+            const gcpNodes = nodes.filter(n => n.cloudProvider === 'GCP');
+            const sources = [];
+            if (awsNodes.length > 0) sources.push(`${awsNodes.length} AWS`);
+            if (gcpNodes.length > 0) sources.push(`${gcpNodes.length} GCP`);
+            dataSource = `Enhanced Multi-Cloud (${sources.join(' + ')})`;
+            showSuccessMessage(`✅ Enhanced multi-cloud: ${sources.join(' + ')}`);
+        } else {
+            throw new Error(`Enhanced backend responded with ${response.status}`);
         }
-        
-        // Fall back to sample data if no data available
+
         if (nodes.length === 0) {
-            console.log('⚠️ No data available, using sample data...');
-            nodes = sampleNodes;
-            dataSource = 'Sample Data';
+            const statusDiv = document.getElementById('visualization-status');
+            if (statusDiv) {
+                statusDiv.style.display = '';
+                statusDiv.textContent = 'No infrastructure nodes found.';
+            }
+            updateDataSourceIndicator('No data');
+            hideLoadingIndicator();
+            return;
         }
-        
+
         console.log(`📊 Using ${dataSource} - ${nodes.length} nodes loaded`);
         updateDataSourceIndicator(dataSource);
         
+        // Clear existing nodes before adding new ones to prevent duplicates
+        const container = document.getElementById('nodes-container');
+        // Remove all existing nodes but keep other elements like SVG, legend, etc.
+        const existingNodes = container.querySelectorAll('.node');
+        existingNodes.forEach(node => node.remove());
+        
         currentNodes = nodes;
         currentConnections = generateSmartConnections(nodes);
-        
-        // Create SVG for connections
         createConnectionsSVG();
-        
-        // Create nodes
         currentNodes.forEach(nodeData => {
             console.log('Creating node:', nodeData.id);
             createInfraNode(nodeData);
         });
-        
-        // Create connections
         currentConnections.forEach(connection => {
             console.log('Creating connection:', connection);
             createConnection(connection);
         });
-        
         hideLoadingIndicator();
-        
+
+        // Hide the visualization status if nodes are loaded
+        const statusDiv = document.getElementById('visualization-status');
+        if (statusDiv) statusDiv.style.display = 'none';
     } catch (error) {
         FrontendErrorHandler.logError('initialize-visualization', error);
         hideLoadingIndicator();
-        
-        // Show error and fall back to sample data
-        showErrorMessage('Failed to load data. Using sample data instead.');
-        currentNodes = sampleNodes;
-        currentConnections = generateSmartConnections(sampleNodes);
-        
-        createConnectionsSVG();
-        currentNodes.forEach(nodeData => createInfraNode(nodeData));
-        currentConnections.forEach(connection => createConnection(connection));
+        showErrorMessage('Failed to load data from backend.');
     }
 }
 
@@ -444,6 +320,13 @@ function updateDataSourceIndicator(dataSource) {
 
 function createConnectionsSVG() {
     const container = document.getElementById('nodes-container');
+    
+    // Remove existing SVG to prevent duplicates
+    const existingSvg = document.getElementById('connections-svg');
+    if (existingSvg) {
+        existingSvg.remove();
+    }
+    
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.id = 'connections-svg';
     
@@ -492,9 +375,13 @@ function addRefreshButton() {
     refreshButton.addEventListener('click', async () => {
         console.log('Refreshing EC2 data...');
         
-        // Clear current visualization
+        // Clear current visualization (only nodes and connections, preserve other elements)
         const container = document.getElementById('nodes-container');
-        container.innerHTML = '';
+        const existingNodes = container.querySelectorAll('.node');
+        const existingSvg = document.getElementById('connections-svg');
+        
+        existingNodes.forEach(node => node.remove());
+        if (existingSvg) existingSvg.remove();
         
         // Re-initialize
         await initializeVisualization();
@@ -778,9 +665,8 @@ async function discoverInstancesHandler() {
     showAdminStatus('🔍 Discovering AWS instances...', 'info');
     
     try {
-        const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.discoverInstances}`, {
+        const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.discoverInstances}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enableAutoDiscovery: true })
         });
         
@@ -839,23 +725,7 @@ function showAdminStatus(message, type) {
     }
 }
 
-// Enhanced refresh function
-async function refreshVisualization() {
-    console.log('🔄 Refreshing visualization...');
-    
-    // Clear current nodes and connections
-    const container = document.getElementById('nodes-container');
-    container.innerHTML = '';
-    
-    // Clear SVG connections
-    const existingSVG = document.getElementById('connections-svg');
-    if (existingSVG) {
-        existingSVG.remove();
-    }
-    
-    // Re-initialize
-    await initializeVisualization();
-}
+// Removed refreshVisualization, autoLayoutNodes, and centerView functions as well as any related code
 
 // Auto-discovery configuration functions
 function showDiscoveryConfigPanel() {
@@ -871,7 +741,7 @@ function hideDiscoveryConfigPanel() {
 
 async function refreshDiscoveryStatus() {
     try {
-        const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.autoDiscoveryStatus}`);
+        const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.autoDiscoveryStatus}`);
         if (!response.ok) {
             const errorMessage = await FrontendErrorHandler.handleFetchError('refresh-discovery-status', response);
             throw new Error(errorMessage);
@@ -916,9 +786,8 @@ async function saveDiscoveryConfig() {
         
         showAdminStatus('💾 Saving discovery configuration...', 'info');
         
-        const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.autoDiscoveryToggle}`, {
+        const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.autoDiscoveryToggle}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled, filters })
         });
         
@@ -955,7 +824,7 @@ class NodeSelectionManager {
 
     async loadInstanceLibrary() {
         try {
-            const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibrary}`);
+            const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibrary}`);
             if (!response.ok) {
                 const errorMessage = await FrontendErrorHandler.handleFetchError('load-instance-library', response);
                 throw new Error(errorMessage);
@@ -973,9 +842,8 @@ class NodeSelectionManager {
 
     async toggleInstanceVisibility(provider, instanceId, visible) {
         try {
-            const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibraryToggleVisibility}`, {
+            const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibraryToggleVisibility}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ provider, instanceId, visible })
             });
 
@@ -999,9 +867,8 @@ class NodeSelectionManager {
 
     async bulkToggleVisibility(instances, visible) {
         try {
-            const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibraryBulkToggle}`, {
+            const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibraryBulkToggle}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ instances, visible })
             });
 
@@ -1292,8 +1159,16 @@ class NodeSelectionManager {
     }
 }
 
-// Global instance
-const nodeSelectionManager = new NodeSelectionManager();
+// Global instance - only create on management page
+let nodeSelectionManager = null;
+
+// Initialize NodeSelectionManager only when needed
+function initializeNodeSelectionManager() {
+    if (!nodeSelectionManager) {
+        nodeSelectionManager = new NodeSelectionManager();
+    }
+    return nodeSelectionManager;
+}
 
 // Function to show/hide the node selection panel
 async function toggleNodeSelectionPanel() {
@@ -1314,8 +1189,8 @@ function cleanupApplication() {
         clearAllGlobalTimeouts();
         
         // Cleanup NodeSelectionManager if it exists
-        if (window.nodeSelectionManager) {
-            window.nodeSelectionManager.cleanupEventListeners();
+        if (nodeSelectionManager) {
+            nodeSelectionManager.cleanupEventListeners();
         }
         
         // Clear any intervals if they exist
@@ -1335,7 +1210,21 @@ function cleanupApplication() {
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing...');
-    initializeVisualization();
+    
+    // Check if we're on the visualization page (index.html) or management page (management.html)
+    const isManagementPage = window.location.pathname.includes('management.html') || 
+                             document.querySelector('.management-header') !== null;
+    
+    if (isManagementPage) {
+        console.log('Management page detected - loading management features');
+        // Only initialize visualization without admin controls
+        initializeVisualization();
+        // Management-specific initialization will be handled by management.html script
+    } else {
+        console.log('Visualization page detected - loading visualization-only features');
+        // Pure visualization mode - no admin controls
+        initializeVisualization();
+    }
 });
 
 // Add cleanup handlers for page unload

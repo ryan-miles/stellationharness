@@ -4,6 +4,33 @@ console.log('aws-integration.js loaded');
 // Note: CONFIG is declared in main.js and available globally
 // Note: CloudService is expected to be available on window (loaded from cloud-utils.js)
 
+// Authentication helper functions (shared with main.js)
+function getAuthHeaders() {
+    return {
+        'Content-Type': 'application/json',
+        'x-api-key': CONFIG.auth.apiKey
+    };
+}
+
+// Enhanced fetch function with authentication
+async function authenticatedFetch(url, options = {}) {
+    const defaultOptions = {
+        headers: getAuthHeaders(),
+        ...options
+    };
+    
+    // Merge headers if additional headers are provided
+    if (options.headers) {
+        defaultOptions.headers = {
+            ...defaultOptions.headers,
+            ...options.headers
+        };
+    }
+    
+    console.log(`🔐 Making authenticated request to: ${url}`);
+    return fetch(url, defaultOptions);
+}
+
 // Real AWS EC2 Service
 class EC2Service extends window.CloudService {
     constructor() {
@@ -37,11 +64,9 @@ class EC2Service extends window.CloudService {
             this.mockData = await this.generateMockEC2Data();
             this.isInitialized = true;
         }
-    }
-
-    async checkBackendHealth() {
+    }    async checkBackendHealth() {
         try {
-            const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.health}`, {
+            const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.health}`, {
                 method: 'GET',
                 timeout: 5000
             });
@@ -59,15 +84,11 @@ class EC2Service extends window.CloudService {
         }
     }
 
-    async fetchRealEC2Instance() {
-        try {
+    async fetchRealEC2Instance() {        try {
             console.log('📡 Fetching real EC2 instance data...');
             
-            const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instance}`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+            const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instance}`, {
+                method: 'GET'
             });
 
             if (!response.ok) {
@@ -84,11 +105,9 @@ class EC2Service extends window.CloudService {
             console.error('❌ Error fetching real EC2 instance:', error);
             throw error;
         }
-    }
-
-    async fetchInstanceStatus() {
+    }    async fetchInstanceStatus() {
         try {
-            const response = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.status}`);
+            const response = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.status}`);
             if (response.ok) {
                 return await response.json();
             }
@@ -227,11 +246,10 @@ class EC2Service extends window.CloudService {
             const mockNodes = (await this.generateMockEC2Data()).map(instance => this.convertToNodeFormat(instance));
             mockNodes.forEach(node => node.metadata.dataSource = 'Mock Data (Backend Unavailable)');
             return mockNodes;
-        }
-        try {
+        }        try {
             console.log('🔍 Fetching multiple EC2 instances via backend...');
             
-            const response = await fetch(`${CONFIG.backend.url}/api/ec2-instances`);
+            const response = await authenticatedFetch(`${CONFIG.backend.url}/api/ec2-instances`);
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);

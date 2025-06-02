@@ -255,10 +255,46 @@ class SecurityValidator {
 
     getStrictRateLimit() {
         return this.createRateLimit(15 * 60 * 1000, 20, 'Too many configuration changes. Please slow down.');
+    }    getDiscoveryRateLimit() {
+        return this.createRateLimit(5 * 60 * 1000, 5, 'Discovery operations limited. Please wait before trying again.');
     }
 
-    getDiscoveryRateLimit() {
-        return this.createRateLimit(5 * 60 * 1000, 5, 'Discovery operations limited. Please wait before trying again.');
+    // Simple validation methods for compatibility with backend
+    validateAWSInstanceId(instanceId) {
+        if (!instanceId || typeof instanceId !== 'string') {
+            return { isValid: false, errors: ['Instance ID is required'] };
+        }
+        
+        const awsInstanceRegex = /^i-[0-9a-f]{8,17}$/;
+        if (!awsInstanceRegex.test(instanceId)) {
+            return { isValid: false, errors: ['Invalid AWS Instance ID format'] };
+        }
+        
+        return { isValid: true, errors: [] };
+    }
+
+    validateApiKey(apiKey) {
+        if (!apiKey || typeof apiKey !== 'string') {
+            return { isValid: false, errors: ['API key is required'] };
+        }
+        
+        if (!apiKey.startsWith('sk_') || apiKey.length < 20) {
+            return { isValid: false, errors: ['Invalid API key format'] };
+        }
+        
+        return { isValid: true, errors: [] };
+    }
+
+    validateString(str, minLength = 0, maxLength = 500) {
+        if (str === null || str === undefined) {
+            return minLength === 0;
+        }
+        
+        if (typeof str !== 'string') {
+            return false;
+        }
+        
+        return str.length >= minLength && str.length <= maxLength;
     }
 }
 
