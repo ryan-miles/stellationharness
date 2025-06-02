@@ -22,32 +22,47 @@ This project is a web-based application designed to visually represent a test in
 
 ```
 stellationharness/
-├── backend-server.js       # Express API server for AWS + GCP integration
-├── gcp-integration.js      # GCP Compute Engine service integration
-├── test-integration.js     # Integration testing and validation
-├── test-multi-cloud.js     # Multi-cloud end-to-end testing
-├── verify-display.js       # Multi-cloud format verification
-├── package.json           # npm configuration with AWS SDK + GCP dependencies
-├── src/
-│   ├── index.html          # Main HTML document for the visualizer
-│   ├── test.html          # Debug/test version (single file)
-│   ├── css/
-│   │   ├── main.css       # Main layout and container styles
-│   │   └── components.css  # Node and connection styles (250px width, 150px height)
-│   ├── js/
-│   │   ├── main.js        # Application initialization with real multi-cloud data
-│   │   ├── aws-integration.js # Real AWS EC2 API integration service
-│   │   ├── node.js        # Multi-cloud node creation with enhanced formatting
-│   │   ├── connection.js   # Connection line creation and updates
-│   │   └── dragdrop.js     # Mouse-based drag and drop functionality
-│   └── assets/
-│       └── icons/
-│           ├── status-online.svg   # Green status indicator
-│           ├── status-offline.svg  # Red status indicator
-│           └── status-warning.svg  # Orange status indicator
-├── README.md             # This comprehensive documentation
-├── AWS_SETUP.md          # AWS integration setup instructions
-└── GCP_SETUP.md          # GCP integration setup instructions
+├── 🚀 Core Application
+│   ├── backend-server.js       # Express API server for AWS + GCP integration
+│   ├── gcp-integration.js      # GCP Compute Engine service integration
+│   ├── azure-integration.js    # Azure service integration
+│   ├── cloud-utils.js          # Cloud utilities and helpers
+│   ├── instances-config.json   # Instance configuration
+│   └── package.json           # npm configuration with cloud SDKs
+├── 📱 Frontend (src/)
+│   ├── index.html             # Main visualizer interface
+│   ├── management.html        # Infrastructure management interface
+│   ├── css/                   # Stylesheets
+│   ├── js/                    # JavaScript modules
+│   └── assets/icons/          # Status indicator SVGs
+├── 📚 Documentation (docs/)
+│   ├── AWS_SETUP.md           # AWS integration setup
+│   ├── GCP_SETUP.md           # GCP integration setup
+│   ├── STARTUP_GUIDE.md       # Complete setup instructions
+│   ├── QUICK_START.md         # Quick start guide
+│   └── SECURITY_IMPLEMENTATION_COMPLETE.md
+├── 🧪 Tests (tests/)
+│   ├── test-integration.js    # Integration testing
+│   ├── test-multi-cloud.js    # Multi-cloud testing
+│   ├── verify-display.js      # Display verification
+│   └── debug-*.js             # Debug utilities
+├── 🎯 Demos (demos/)
+│   ├── demo-add-instance.js   # Instance addition demo
+│   ├── demo-auto-discovery.js # Auto-discovery demo
+│   └── demo-auto-discovery-guide.js
+├── ⚙️ Scripts (scripts/)
+│   ├── START_VISUALIZER.bat   # Windows startup script
+│   ├── Start-Visualizer.ps1   # PowerShell startup
+│   ├── Update-ApiKey.ps1      # API key management
+│   └── *.bat, *.ps1           # Various utilities
+├── 🔐 Security (security/)
+│   ├── auth-manager.js        # Authentication
+│   ├── config-manager.js      # Configuration security
+│   └── input-validation.js    # Input validation
+└── 📊 Data & Config
+    ├── config/                # API keys and secrets
+    ├── data/                  # CSV and archived data
+    └── assets/                # Jupyter notebooks, presentations
 ```
 
 ## Setup Instructions
@@ -268,6 +283,41 @@ curl http://localhost:3001/api/ec2-instances  # Direct API validation
 - **test.html**: Single-file debug version with inline CSS/JavaScript
 - **Browser DevTools**: Network tab to monitor API calls and data flow
 - **Console Logging**: Comprehensive logging in aws-integration.js and node.js
+
+## 📁 Project Organization
+
+This project has been organized into logical folders to improve maintainability and navigation:
+
+### 📚 **[docs/](./docs/)** - Documentation Hub
+All setup guides, feature documentation, and project information in one place.
+- AWS/GCP setup instructions
+- Security implementation details
+- Startup and quick-start guides
+
+### 🧪 **[tests/](./tests/)** - Testing Suite
+Complete testing infrastructure for validation and debugging.
+- Integration tests and multi-cloud validation
+- Display verification and debug utilities
+- Live data connection testing
+
+### 🎯 **[demos/](./demos/)** - Example Scripts
+Interactive demonstrations and learning materials.
+- Instance addition examples
+- Auto-discovery feature demos
+- Step-by-step configuration guides
+
+### ⚙️ **[scripts/](./scripts/)** - Automation Tools
+Startup scripts and utility tools for easy project management.
+- Windows batch and PowerShell startup scripts
+- API key management utilities
+- Desktop shortcut creation tools
+
+**Benefits of Organization:**
+- ✅ Reduced root directory clutter (40+ files → 8 core files)
+- ✅ Logical grouping by function and purpose
+- ✅ Easier navigation and project understanding
+- ✅ Clear separation of concerns
+- ✅ Better maintainability for team development
 
 ## Contributing
 
