@@ -7,27 +7,34 @@
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/components.css">
     <style>
+
         /* Management-specific styles */
         .management-header {
             background: linear-gradient(135deg, #b3b3b4 0%, #111118 100%);
             color: white;
-            padding: 20px;
+            padding: 0px 24px 18px 12px;    /* More padding, especially bottom */
             margin-bottom: 30px;
-            border-radius: 0px;
+            border-radius: 0px 0px 0px 0px;  /* Only round the bottom, or use 0 for square */
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            overflow: auto;                /* Ensures children don't overflow */
+            position: relative;
+            z-index: 1;
         }
-        
         .management-header h1 {
             margin: 0;
+            padding: 0;
+            position: relative;
             font-size: 2.2em;
+            color: inherit;
+            z-index: 1;
+            /* Remove any margin that might push it out of the box */
         }
-        
         .management-header p {
             margin: 10px 0 0 0;
             opacity: 0.9;
             font-size: 1.1em;
-        }
-        
+        }        
+
         .navigation-bar {
             background: #f8f9fa;
             border: 1px solid #dee2e6;
@@ -306,7 +313,6 @@
     <div id="app">
         <div class="management-header">
             <h1>Infrastructure Management</h1>
-            <p>Manage your multi-cloud infrastructure instances, configuration, and discovery settings</p>
         </div>
         
         <div class="navigation-bar">
@@ -359,42 +365,16 @@
             </div>
         </div>
     </div>
-    
-    <!-- Load scripts in correct order -->
+      <!-- Script Loading Order: config.js first! -->
+    <script src="js/config.js"></script>
+    <script src="cloud-utils.js"></script>
     <script src="js/aws-integration.js"></script>
     <script src="js/dragdrop.js"></script>
     <script src="js/node.js"></script>
     <script src="js/connection.js"></script>
-    <script>
-        // Management page specific configuration
-        const CONFIG = {
-            backend: {
-                url: 'http://localhost:3001',
-                endpoints: {
-                    instances: '/api/ec2-instances',
-                    allInstances: '/api/all-instances',
-                    instance: '/api/ec2-instance',
-                    gcpInstance: '/api/gcp-instance',
-                    status: '/api/ec2-instance/status',
-                    health: '/api/health',
-                    addInstance: '/api/config/aws/add-instance',
-                    removeInstance: '/api/config/aws/remove-instance',
-                    discoverInstances: '/api/discover-instances',
-                    autoDiscoveryStatus: '/api/auto-discovery/status',
-                    autoDiscoveryToggle: '/api/auto-discovery/toggle',
-                    instanceLibrary: '/api/instance-library',
-                    instanceLibraryToggleVisibility: '/api/instance-library/toggle-visibility',
-                    instanceLibraryBulkToggle: '/api/instance-library/bulk-toggle'
-                }
-            }
-        };
-        
-        // Management page is in management mode
-        window.MANAGEMENT_MODE = true;
-    </script>
     <script src="js/main.js"></script>
-    
-    <script>        // Management page specific initialization
+    <script>
+        // Management page specific initialization
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Management page loaded, initializing...');
             
@@ -414,7 +394,7 @@
             // Load initial system status
             loadSystemStatus();
         });
-        
+
         async function initializeNodeSelectionPanel() {
             try {
                 // Load the instance library and render the selection panel
@@ -461,8 +441,7 @@
                 btn.disabled = false;
             }
         }
-        
-        async function loadSystemStatus() {
+          async function loadSystemStatus() {
             try {
                 // Check backend health
                 const healthResponse = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.health}`);
@@ -476,8 +455,8 @@
                     backendStatus.style.color = '#dc3545';
                 }
                 
-                // Load instance counts
-                const libraryResponse = await fetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibrary}`);
+                // Load instance counts using authenticated fetch
+                const libraryResponse = await authenticatedFetch(`${CONFIG.backend.url}${CONFIG.backend.endpoints.instanceLibrary}`);
                 if (libraryResponse.ok) {
                     const library = await libraryResponse.json();
                     document.getElementById('total-instances').textContent = library.summary?.total || 0;

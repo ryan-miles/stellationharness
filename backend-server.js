@@ -916,7 +916,7 @@ function convertInstanceToNode(ec2Instance, config = {}) {
 }
 
 // Manual auto-discovery trigger endpoint
-app.post('/api/discover-instances', authenticateRequest, requirePermission('write:config'), async (req, res) => {
+app.post('/api/discover-instances', authenticateRequest, requirePermission('manage:discovery'), async (req, res) => {
     try {
         console.log('🔍 Manual instance discovery triggered');
         

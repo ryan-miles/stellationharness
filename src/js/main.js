@@ -190,7 +190,20 @@ async function initializeVisualization() {
 }
 
 function showLoadingIndicator() {
-    const container = document.getElementById('nodes-container');
+    // Try to find nodes-container first (visualization page)
+    let container = document.getElementById('nodes-container');
+    
+    // If not found, use the app container (management page)
+    if (!container) {
+        container = document.getElementById('app');
+    }
+    
+    // If still no container, can't show loading indicator
+    if (!container) {
+        console.warn('No container found for loading indicator');
+        return;
+    }
+    
     const loadingDiv = document.createElement('div');
     loadingDiv.id = 'loading-indicator';
     loadingDiv.innerHTML = `
@@ -392,13 +405,24 @@ function addRefreshButton() {
 
 // Add admin controls for managing instances
 function addAdminControls() {
-    const app = document.getElementById('app');
+    // Look for existing admin-controls div (for management page)
+    let adminControlsDiv = document.getElementById('admin-controls');
     
-    const adminPanel = document.createElement('div');
-    adminPanel.id = 'admin-controls';
-    adminPanel.innerHTML = `
+    if (!adminControlsDiv) {
+        // If no existing div, create one and insert after title (for main page)
+        const app = document.getElementById('app');
+        const adminPanel = document.createElement('div');
+        adminPanel.id = 'admin-controls';
+        
+        // Insert after the title
+        const title = app.querySelector('h1');
+        title.insertAdjacentElement('afterend', adminPanel);
+        adminControlsDiv = adminPanel;
+    }
+    
+    // Populate the admin controls div with the management interface
+    adminControlsDiv.innerHTML = `
         <div class="admin-panel">
-            <h3>🛠️ Instance Management</h3>
             <div class="admin-form">
                 <div class="form-group">
                     <label for="instance-id">AWS Instance ID:</label>
@@ -462,10 +486,6 @@ function addAdminControls() {
             <div id="admin-status" class="admin-status"></div>
         </div>
     `;
-    
-    // Insert after the title
-    const title = app.querySelector('h1');
-    title.insertAdjacentElement('afterend', adminPanel);
     
     // Add event listeners
     document.getElementById('add-instance-btn').addEventListener('click', addInstanceHandler);
