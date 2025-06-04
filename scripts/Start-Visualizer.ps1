@@ -15,11 +15,12 @@ Write-Host " 🚀 Infrastructure Visualizer Startup" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Change to script directory
+# Change to project root directory (one level up from scripts)
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $ScriptPath
+$ProjectPath = Split-Path -Parent $ScriptPath
+Set-Location $ProjectPath
 
-Write-Host "📁 Project directory: $ScriptPath" -ForegroundColor Yellow
+Write-Host "📁 Project directory: $ProjectPath" -ForegroundColor Yellow
 Write-Host ""
 
 # Check Node.js installation

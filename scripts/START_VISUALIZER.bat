@@ -8,8 +8,8 @@ echo  🚀 Infrastructure Visualizer Startup
 echo ========================================
 echo.
 
-REM Change to the project directory
-cd /d "%~dp0"
+REM Change to the project root directory (one level up from scripts)
+cd /d "%~dp0\.."
 
 echo 📁 Current directory: %CD%
 echo.
@@ -35,12 +35,19 @@ if not exist "node_modules" (
         pause
         exit /b 1
     )
+) else (
+    echo ✅ npm packages already installed
 )
 
 REM Ensure cloud-utils.js is copied to src directory
 if not exist "src\cloud-utils.js" (
     echo 📋 Copying cloud-utils.js to src directory...
-    copy "cloud-utils.js" "src\" >nul
+    if exist "cloud-utils.js" (
+        copy "cloud-utils.js" "src\" >nul
+        echo ✅ cloud-utils.js copied successfully
+    ) else (
+        echo ⚠️ cloud-utils.js not found in root directory
+    )
 )
 
 echo.
